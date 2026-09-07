@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
@@ -17,6 +18,12 @@ func statusForError(err error) int {
 	if errors.Is(err, service.ErrInvalidInput) {
 		return http.StatusBadRequest
 	}
+	if errors.Is(err, service.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	if errors.Is(err, service.ErrConflict) {
+		return http.StatusConflict
+	}
 	var apiErr *solverclient.APIError
 	if errors.As(err, &apiErr) {
 		return apiErr.StatusCode
@@ -25,5 +32,12 @@ func statusForError(err error) int {
 }
 
 func handleError(w http.ResponseWriter, err error) {
-	writeError(w, statusForError(err), err.Error())
+	status := statusForError(err)
+	var solverErr *solverclient.APIError
+	if status >= http.StatusInternalServerError && !errors.As(err, &solverErr) {
+		log.Printf("request failed: %v", err)
+		writeError(w, status, "internal server error")
+		return
+	}
+	writeError(w, status, err.Error())
 }

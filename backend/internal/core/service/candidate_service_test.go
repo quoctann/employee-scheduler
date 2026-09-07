@@ -14,11 +14,14 @@ func TestCandidateService_Suggest_UsesLatestRunWindowWhenAvailable(t *testing.T)
 	latest := domain.SolveResult{
 		StartDate: runStart,
 		NumDays:   28,
-		Schedule:  []domain.ScheduleEntry{{EmployeeID: "NV01", Date: slotDate, Gate: "A", Shift: domain.ShiftSang}},
+		Schedule: []domain.ScheduleEntry{
+			{EmployeeID: "NV01", Date: slotDate, Gate: "A", Shift: domain.ShiftSang},
+			{EmployeeID: "NV02", Date: slotDate, Gate: "A", Shift: domain.ShiftSang},
+		},
 	}
 	solver := &fakeSolverGateway{}
-	schedRepo := &fakeScheduleRepository{latestResult: latest, latestFound: true}
-	svc := NewCandidateService(solver, &fakeEmployeeRepository{}, &fakeConfigRepository{}, schedRepo)
+	schedRepo := &fakeScheduleRepository{latestResult: latest, latestFound: true, carryIn: domain.CarryIn{WorkedNightBeforeStart: []string{"NV01", "NV02"}}}
+	svc := NewCandidateService(solver, &fakeEmployeeRepository{employees: []domain.Employee{{EmployeeID: "NV01"}}}, &fakeConfigRepository{}, schedRepo)
 
 	// Act
 	_, err := svc.Suggest(context.Background(), CandidateParams{
@@ -35,6 +38,9 @@ func TestCandidateService_Suggest_UsesLatestRunWindowWhenAvailable(t *testing.T)
 	}
 	if len(solver.candidatesReq.CurrentSchedule) != 1 {
 		t.Fatalf("expected current_schedule from latest run, got %+v", solver.candidatesReq.CurrentSchedule)
+	}
+	if got := solver.candidatesReq.CarryIn.WorkedNightBeforeStart; len(got) != 1 || got[0] != "NV01" {
+		t.Fatalf("expected inactive carry-in to be removed, got %+v", got)
 	}
 	if solver.candidatesReq.TopN != defaultTopN {
 		t.Fatalf("expected default top_n %d, got %d", defaultTopN, solver.candidatesReq.TopN)

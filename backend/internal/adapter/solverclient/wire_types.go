@@ -11,7 +11,7 @@ import "github.com/tantq/employee-scheduler-backend/internal/core/domain"
 type wireSolveRequest struct {
 	StartDate         domain.Date               `json:"start_date"`
 	NumDays           int                       `json:"num_days"`
-	Employees         []domain.Employee         `json:"employees"`
+	Employees         []wireEmployee            `json:"employees"`
 	Availability      domain.AvailabilityMap    `json:"availability"`
 	LockedAssignments []domain.LockedAssignment `json:"locked_assignments"`
 	CarryIn           domain.CarryIn            `json:"carry_in"`
@@ -37,7 +37,7 @@ type wireCapacityCheckRequest struct {
 type wireReplacementCandidatesRequest struct {
 	StartDate          domain.Date            `json:"start_date"`
 	NumDays            int                    `json:"num_days"`
-	Employees          []domain.Employee      `json:"employees"`
+	Employees          []wireEmployee         `json:"employees"`
 	Availability       domain.AvailabilityMap `json:"availability"`
 	CurrentSchedule    []domain.ScheduleEntry `json:"current_schedule"`
 	CarryIn            domain.CarryIn         `json:"carry_in"`
@@ -45,4 +45,12 @@ type wireReplacementCandidatesRequest struct {
 	ExcludedEmployeeID *string                `json:"excluded_employee_id"`
 	TopN               int                    `json:"top_n"`
 	Config             domain.SolverConfig    `json:"config"`
+}
+
+// wireEmployee intentionally excludes management-only state such as Active.
+type wireEmployee struct {
+	EmployeeID string        `json:"employee_id"`
+	Name       string        `json:"name"`
+	Role       domain.Role   `json:"role"`
+	LeaveDays  []domain.Date `json:"leave_days,omitempty"`
 }

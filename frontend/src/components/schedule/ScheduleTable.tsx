@@ -3,12 +3,11 @@ import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { dateRange, formatShortDate } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import type { Employee, ScheduleEntry, ShiftType } from '@/api/types'
+import type { Employee, ScheduleEntry, ShiftHours, ShiftType } from '@/api/types'
 
 export interface CellAssignment {
   gate: string
@@ -48,16 +47,17 @@ interface ScheduleTableProps {
   schedule: ScheduleEntry[]
   startDate: string
   numDays: number
+  shiftHours: ShiftHours
   overrides: CellOverrides
   onEditCell: (employeeId: string, date: string, assignment: CellAssignment | null) => void
 }
 
 const columnHelper = createColumnHelper<ScheduleRow>()
 
-/** Pivot: rows = roster employees, columns = each date in the horizon, cell = "Gate·shift" or OFF.
+/** Pivot: rows = roster employees, columns = each date in the horizon, cell = "Gate-duration" or OFF.
  *  Every cell is click-to-edit: a manager can override the solver's assignment (different gate/shift,
  *  or Off), tracked in `overrides` and highlighted until the edited schedule is approved. */
-export function ScheduleTable({ employees, schedule, startDate, numDays, overrides, onEditCell }: ScheduleTableProps) {
+export function ScheduleTable({ employees, schedule, startDate, numDays, shiftHours, overrides, onEditCell }: ScheduleTableProps) {
   const dates = useMemo(() => dateRange(startDate, numDays), [startDate, numDays])
 
   const rows = useMemo<ScheduleRow[]>(() => {
@@ -103,6 +103,7 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, overrid
             return (
               <EditableCell
                 value={effective}
+                shiftHours={shiftHours}
                 edited={overrides.has(overrideKey(employeeId, date))}
                 onSave={(assignment) => onEditCell(employeeId, date, assignment)}
               />
@@ -111,7 +112,7 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, overrid
         }),
       ),
     ],
-    [dates, overrides, onEditCell],
+    [dates, overrides, onEditCell, shiftHours],
   )
 
   const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() })
@@ -142,16 +143,21 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, overrid
 
 function EditableCell({
   value,
+  shiftHours,
   edited,
   onSave,
 }: {
   value: CellAssignment | null
+  shiftHours: ShiftHours
   edited: boolean
   onSave: (assignment: CellAssignment | null) => void
 }) {
   const [open, setOpen] = useState(false)
   const [gate, setGate] = useState(value?.gate ?? '')
   const [shift, setShift] = useState<ShiftType>(value?.shift ?? 'sang')
+  const gates = Object.keys(shiftHours).sort()
+  const shifts = (['sang', 'dem'] as const).filter((candidate) => shiftHours[gate]?.[candidate] !== undefined)
+  const hours = value ? shiftHours[value.gate]?.[value.shift] : undefined
 
   function handleOpenChange(next: boolean) {
     if (next) {
@@ -162,11 +168,11 @@ function EditableCell({
   }
 
   function handleSave() {
-    if (!gate.trim()) {
-      toast.error('Cần nhập mã cổng trước khi lưu')
+    if (shiftHours[gate]?.[shift] === undefined) {
+      toast.error('Chọn một cổng và ca có trong cấu hình trước khi lưu')
       return
     }
-    onSave({ gate: gate.trim().toUpperCase(), shift })
+    onSave({ gate, shift })
     setOpen(false)
   }
 
@@ -180,6 +186,7 @@ function EditableCell({
       <PopoverTrigger asChild>
         <button
           type="button"
+          aria-label={value ? `${value.gate}, ca ${value.shift === 'dem' ? 'đêm' : 'sáng'}, ${hours ?? 'chưa có'} giờ` : 'Off'}
           className={cn(
             'rounded-md ring-offset-1 transition-shadow hover:shadow-sm',
             edited && 'ring-2 ring-status-edited ring-offset-background',
@@ -194,7 +201,7 @@ function EditableCell({
                   : 'bg-status-sang text-status-sang-foreground',
               )}
             >
-              {value.gate}·{value.shift === 'dem' ? 'đêm' : 'sáng'}
+              {value.gate}-{hours ?? '?'}
             </Badge>
           ) : (
             <span className="px-1 text-xs text-muted-foreground">OFF</span>
@@ -205,7 +212,20 @@ function EditableCell({
         <div className="flex flex-col gap-2">
           <div className="grid gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Cổng</label>
-            <Input value={gate} onChange={(e) => setGate(e.target.value.toUpperCase())} placeholder="vd: A" />
+            <select
+              value={gate}
+              onChange={(e) => {
+                const nextGate = e.target.value
+                setGate(nextGate)
+                if (shiftHours[nextGate]?.[shift] === undefined) {
+                  setShift((['sang', 'dem'] as const).find((candidate) => shiftHours[nextGate]?.[candidate] !== undefined) ?? 'sang')
+                }
+              }}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+            >
+              {gate && !shiftHours[gate] && <option value={gate}>{gate} (không còn cấu hình)</option>}
+              {gates.map((gateCode) => <option key={gateCode} value={gateCode}>{gateCode}</option>)}
+            </select>
           </div>
           <div className="grid gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">Ca</label>
@@ -214,15 +234,15 @@ function EditableCell({
               onChange={(e) => setShift(e.target.value as ShiftType)}
               className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
             >
-              <option value="sang">Sáng</option>
-              <option value="dem">Đêm</option>
+              {shift && !shifts.includes(shift) && <option value={shift}>{shift === 'dem' ? 'Đêm' : 'Sáng'} (không còn cấu hình)</option>}
+              {shifts.map((shiftType) => <option key={shiftType} value={shiftType}>{shiftType === 'dem' ? 'Đêm' : 'Sáng'}</option>)}
             </select>
           </div>
           <div className="flex justify-between gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" onClick={handleOff}>
               Off
             </Button>
-            <Button type="button" size="sm" onClick={handleSave}>
+            <Button type="button" size="sm" onClick={handleSave} disabled={shiftHours[gate]?.[shift] === undefined}>
               Lưu
             </Button>
           </div>

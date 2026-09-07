@@ -12,6 +12,7 @@ import (
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/httpapi"
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/tantq/employee-scheduler-backend/internal/core/port"
 	"github.com/tantq/employee-scheduler-backend/internal/core/service"
 )
 
@@ -30,6 +31,7 @@ func newTestServer(t *testing.T, solver *fakeSolverGateway, empRepo *fakeEmploye
 
 	s := &httpapi.Server{
 		Employees:  service.NewEmployeeService(empRepo),
+		Config:     service.NewConfigService(cfgRepo),
 		Schedule:   service.NewScheduleService(solver, empRepo, cfgRepo, schedRepo),
 		Approve:    service.NewApproveService(schedRepo),
 		Capacity:   service.NewCapacityService(solver, empRepo, cfgRepo),
@@ -282,6 +284,63 @@ func TestHandleSetLeaveDay_RepoError_Returns500(t *testing.T) {
 	}
 }
 
+func TestHandleEmployeeManagementRoutes(t *testing.T) {
+	repo := &fakeEmployeeRepository{}
+	router := newTestServer(t, nil, repo, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/employees", bytes.NewBufferString(`{"employee_id":"NV22","name":"Nhan vien 22","role":"NV"}`))
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201; body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/employees/NV22", bytes.NewBufferString(`{"name":"Truong ca 22","role":"TC"}`))
+	updateRec := httptest.NewRecorder()
+	router.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200; body=%s", updateRec.Code, updateRec.Body.String())
+	}
+
+	deactivateRec := httptest.NewRecorder()
+	router.ServeHTTP(deactivateRec, httptest.NewRequest(http.MethodDelete, "/api/v1/employees/NV22", nil))
+	if deactivateRec.Code != http.StatusOK {
+		t.Fatalf("deactivate status = %d, want 200; body=%s", deactivateRec.Code, deactivateRec.Body.String())
+	}
+
+	restoreRec := httptest.NewRecorder()
+	router.ServeHTTP(restoreRec, httptest.NewRequest(http.MethodPost, "/api/v1/employees/NV22/restore", nil))
+	if restoreRec.Code != http.StatusOK {
+		t.Fatalf("restore status = %d, want 200; body=%s", restoreRec.Code, restoreRec.Body.String())
+	}
+}
+
+func TestHandleEmployeeManagementReturnsExpectedErrors(t *testing.T) {
+	repo := &fakeEmployeeRepository{createErr: port.ErrEmployeeConflict, setActiveErr: port.ErrEmployeeNotFound}
+	router := newTestServer(t, nil, repo, nil)
+
+	duplicateRec := httptest.NewRecorder()
+	router.ServeHTTP(duplicateRec, httptest.NewRequest(http.MethodPost, "/api/v1/employees", bytes.NewBufferString(`{"employee_id":"NV01","name":"Name","role":"NV"}`)))
+	if duplicateRec.Code != http.StatusConflict {
+		t.Fatalf("duplicate status = %d, want 409", duplicateRec.Code)
+	}
+
+	missingRec := httptest.NewRecorder()
+	router.ServeHTTP(missingRec, httptest.NewRequest(http.MethodDelete, "/api/v1/employees/NV99", nil))
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing status = %d, want 404", missingRec.Code)
+	}
+}
+
+func TestHandleGetConfig_ReturnsOK(t *testing.T) {
+	router := newTestServer(t, nil, nil, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("config status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCORSPreflight_ReturnsNoContentWithHeaders(t *testing.T) {
 	router := newTestServer(t, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/schedule/solve", nil)
@@ -293,5 +352,8 @@ func TestCORSPreflight_ReturnsNoContentWithHeaders(t *testing.T) {
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
 		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodDelete) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want DELETE", got)
 	}
 }

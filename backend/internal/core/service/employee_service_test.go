@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/tantq/employee-scheduler-backend/internal/core/port"
 )
 
 func TestEmployeeService_Roster_ReturnsEmployeesAndAvailability(t *testing.T) {
@@ -15,7 +17,7 @@ func TestEmployeeService_Roster_ReturnsEmployeesAndAvailability(t *testing.T) {
 	}
 	svc := NewEmployeeService(repo)
 
-	employees, availability, err := svc.Roster(context.Background())
+	employees, availability, err := svc.Roster(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Roster() error = %v", err)
 	}
@@ -115,5 +117,62 @@ func TestEmployeeService_SetLeaveDay_EmptyEmployeeID_ReturnsInvalidInput(t *test
 	err := svc.SetLeaveDay(context.Background(), "", date, false)
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("SetLeaveDay() error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestEmployeeService_CreateUpdateAndSetActive(t *testing.T) {
+	repo := &fakeEmployeeRepository{
+		createResult:    domain.Employee{EmployeeID: "NV22", Name: "Nhan vien 22", Role: domain.RoleNV, Active: true},
+		updateResult:    domain.Employee{EmployeeID: "NV22", Name: "Truong ca 22", Role: domain.RoleTC, Active: true},
+		setActiveResult: domain.Employee{EmployeeID: "NV22", Active: false},
+	}
+	svc := NewEmployeeService(repo)
+
+	if _, err := svc.Create(context.Background(), domain.Employee{EmployeeID: " NV22 ", Name: " Nhan vien 22 ", Role: domain.RoleNV}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if repo.createEmployee.EmployeeID != "NV22" || !repo.createEmployee.Active {
+		t.Fatalf("Create() passed %+v", repo.createEmployee)
+	}
+	if _, err := svc.Update(context.Background(), "NV22", "Truong ca 22", domain.RoleTC); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if repo.updateEmployeeID != "NV22" || repo.updateRole != domain.RoleTC {
+		t.Fatalf("Update() passed id=%q role=%q", repo.updateEmployeeID, repo.updateRole)
+	}
+	if _, err := svc.Deactivate(context.Background(), "NV22"); err != nil {
+		t.Fatalf("Deactivate() error = %v", err)
+	}
+	if repo.setActiveValue {
+		t.Fatal("Deactivate() set active=true")
+	}
+	if _, err := svc.Restore(context.Background(), "NV22"); err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if !repo.setActiveValue {
+		t.Fatal("Restore() set active=false")
+	}
+}
+
+func TestEmployeeService_MutationsValidateAndMapExpectedErrors(t *testing.T) {
+	repo := &fakeEmployeeRepository{}
+	svc := NewEmployeeService(repo)
+
+	if _, err := svc.Create(context.Background(), domain.Employee{EmployeeID: " ", Name: "Name", Role: domain.RoleNV}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Create() error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := svc.Update(context.Background(), "NV01", "", domain.RoleNV); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Update() error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := svc.Create(context.Background(), domain.Employee{EmployeeID: strings.Repeat("A", maxEmployeeIDLength+1), Name: "Name", Role: domain.RoleNV}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Create() oversized ID error = %v, want ErrInvalidInput", err)
+	}
+	repo.createErr = port.ErrEmployeeConflict
+	if _, err := svc.Create(context.Background(), domain.Employee{EmployeeID: "NV01", Name: "Name", Role: domain.RoleNV}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Create() error = %v, want ErrConflict", err)
+	}
+	repo.setActiveErr = port.ErrEmployeeNotFound
+	if _, err := svc.Restore(context.Background(), "NV99"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Restore() error = %v, want ErrNotFound", err)
 	}
 }

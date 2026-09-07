@@ -42,13 +42,15 @@ func (s *CandidateService) Suggest(ctx context.Context, params CandidateParams) 
 	if found {
 		startDate = latest.StartDate
 		numDays = latest.NumDays
-		currentSchedule = latest.Schedule
 	}
 	endDate := startDate.AddDays(numDays - 1)
 
-	employees, err := s.Employees.List(ctx)
+	employees, err := s.Employees.List(ctx, false)
 	if err != nil {
 		return domain.ReplacementCandidatesResult{}, fmt.Errorf("list employees: %w", err)
+	}
+	if found {
+		currentSchedule = filterScheduleEntries(latest.Schedule, employees)
 	}
 
 	availability, err := s.Employees.Availability(ctx, startDate, endDate)
@@ -65,6 +67,7 @@ func (s *CandidateService) Suggest(ctx context.Context, params CandidateParams) 
 	if err != nil {
 		return domain.ReplacementCandidatesResult{}, fmt.Errorf("load carry-in: %w", err)
 	}
+	carryIn = filterCarryIn(carryIn, employees)
 
 	topN := params.TopN
 	if topN <= 0 {
@@ -87,4 +90,15 @@ func (s *CandidateService) Suggest(ctx context.Context, params CandidateParams) 
 		return domain.ReplacementCandidatesResult{}, fmt.Errorf("call solver: %w", err)
 	}
 	return result, nil
+}
+
+func filterScheduleEntries(entries []domain.ScheduleEntry, employees []domain.Employee) []domain.ScheduleEntry {
+	activeIDs := activeEmployeeIDs(employees)
+	filtered := make([]domain.ScheduleEntry, 0, len(entries))
+	for _, entry := range entries {
+		if _, active := activeIDs[entry.EmployeeID]; active {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }

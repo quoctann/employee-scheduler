@@ -9,8 +9,13 @@ func NewRouter(s *Server, corsOrigin string) http.Handler {
 
 	mux.HandleFunc("GET /api/v1/health", handleHealth)
 	mux.HandleFunc("GET /api/v1/employees", s.handleGetEmployees)
+	mux.HandleFunc("POST /api/v1/employees", s.handleCreateEmployee)
+	mux.HandleFunc("PUT /api/v1/employees/{employee_id}", s.handleUpdateEmployee)
+	mux.HandleFunc("DELETE /api/v1/employees/{employee_id}", s.handleDeactivateEmployee)
+	mux.HandleFunc("POST /api/v1/employees/{employee_id}/restore", s.handleRestoreEmployee)
 	mux.HandleFunc("PUT /api/v1/employees/{employee_id}/availability", s.handleSetAvailability)
 	mux.HandleFunc("PUT /api/v1/employees/{employee_id}/leave", s.handleSetLeaveDay)
+	mux.HandleFunc("GET /api/v1/config", s.handleGetConfig)
 	mux.HandleFunc("POST /api/v1/schedule/solve", s.handleSolve)
 	mux.HandleFunc("GET /api/v1/schedule/latest", s.handleLatestSchedule)
 	mux.HandleFunc("POST /api/v1/schedule/approve", s.handleApprove)

@@ -37,7 +37,7 @@ func (s *ScheduleService) Solve(ctx context.Context, params SolveParams) (domain
 
 	endDate := params.StartDate.AddDays(params.NumDays - 1)
 
-	employees, err := s.Employees.List(ctx)
+	employees, err := s.Employees.List(ctx, false)
 	if err != nil {
 		return domain.SolveResult{}, fmt.Errorf("list employees: %w", err)
 	}
@@ -62,6 +62,7 @@ func (s *ScheduleService) Solve(ctx context.Context, params SolveParams) (domain
 	if err != nil {
 		return domain.SolveResult{}, fmt.Errorf("load carry-in: %w", err)
 	}
+	carryIn = filterCarryIn(carryIn, employees)
 
 	timeLimitS := params.TimeLimitS
 	if timeLimitS <= 0 {
@@ -96,7 +97,8 @@ func (s *ScheduleService) Solve(ctx context.Context, params SolveParams) (domain
 	return result, nil
 }
 
-// sanitizeLockedAssignments downgrades a locked (approved) assignment to an
+// sanitizeLockedAssignments drops locks for employees no longer on the active
+// roster and downgrades a locked (approved) assignment to an
 // explicit "off" lock wherever it no longer matches the employee's *current*
 // availability/leave registration, instead of forwarding it as-is and having
 // solver-service reject the whole solve.
@@ -118,10 +120,13 @@ func sanitizeLockedAssignments(locked []domain.LockedAssignment, employees []dom
 		leaveDays[e.EmployeeID] = days
 	}
 
-	sanitized := make([]domain.LockedAssignment, len(locked))
-	for i, la := range locked {
-		sanitized[i] = la
+	sanitized := make([]domain.LockedAssignment, 0, len(locked))
+	for _, la := range locked {
+		if _, active := leaveDays[la.EmployeeID]; !active {
+			continue
+		}
 		if la.Off || la.Shift == nil {
+			sanitized = append(sanitized, la)
 			continue
 		}
 		stillAvailable := !leaveDays[la.EmployeeID][la.Date]
@@ -130,10 +135,31 @@ func sanitizeLockedAssignments(locked []domain.LockedAssignment, employees []dom
 			stillAvailable = (*la.Shift == domain.ShiftSang && avail.Sang) || (*la.Shift == domain.ShiftDem && avail.Dem)
 		}
 		if !stillAvailable {
-			sanitized[i] = domain.LockedAssignment{EmployeeID: la.EmployeeID, Date: la.Date, Off: true}
+			la = domain.LockedAssignment{EmployeeID: la.EmployeeID, Date: la.Date, Off: true}
 		}
+		sanitized = append(sanitized, la)
 	}
 	return sanitized
+}
+
+func activeEmployeeIDs(employees []domain.Employee) map[string]struct{} {
+	ids := make(map[string]struct{}, len(employees))
+	for _, employee := range employees {
+		ids[employee.EmployeeID] = struct{}{}
+	}
+	return ids
+}
+
+func filterCarryIn(carryIn domain.CarryIn, employees []domain.Employee) domain.CarryIn {
+	activeIDs := activeEmployeeIDs(employees)
+	filtered := make([]string, 0, len(carryIn.WorkedNightBeforeStart))
+	for _, employeeID := range carryIn.WorkedNightBeforeStart {
+		if _, active := activeIDs[employeeID]; active {
+			filtered = append(filtered, employeeID)
+		}
+	}
+	carryIn.WorkedNightBeforeStart = filtered
+	return carryIn
 }
 
 // Latest returns the most recently persisted solve result, if any.

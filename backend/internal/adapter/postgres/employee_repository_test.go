@@ -2,11 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/tantq/employee-scheduler-backend/internal/core/port"
 )
 
 // currentDateForTest mirrors CURRENT_DATE as seen by the migration that
@@ -19,7 +22,7 @@ func TestEmployeeRepository_List_ReturnsSeededRoster(t *testing.T) {
 	pool := testPool(t)
 	repo := NewEmployeeRepository(pool)
 
-	employees, err := repo.List(context.Background())
+	employees, err := repo.List(context.Background(), false)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -107,7 +110,7 @@ func TestEmployeeRepository_SetLeaveDay_AddsAndRemoves(t *testing.T) {
 	if err := repo.SetLeaveDay(ctx, "NV01", date, true); err != nil {
 		t.Fatalf("SetLeaveDay(true) second call error = %v", err)
 	}
-	employees, err := repo.List(ctx)
+	employees, err := repo.List(ctx, false)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -118,12 +121,65 @@ func TestEmployeeRepository_SetLeaveDay_AddsAndRemoves(t *testing.T) {
 	if err := repo.SetLeaveDay(ctx, "NV01", date, false); err != nil {
 		t.Fatalf("SetLeaveDay(false) error = %v", err)
 	}
-	employees, err = repo.List(ctx)
+	employees, err = repo.List(ctx, false)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 	if hasLeaveDay(employees, "NV01", date) {
 		t.Fatalf("expected NV01 to no longer have leave day %v after SetLeaveDay(false)", date)
+	}
+}
+
+func TestEmployeeRepository_ManagesEmployeeLifecycle(t *testing.T) {
+	pool := testPool(t)
+	repo := NewEmployeeRepository(pool)
+	ctx := context.Background()
+	id := fmt.Sprintf("TEST%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM employees WHERE employee_id = $1`, id)
+	})
+
+	created, err := repo.Create(ctx, domain.Employee{EmployeeID: id, Name: "Test Employee", Role: domain.RoleNV})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !created.Active || created.Name != "Test Employee" {
+		t.Fatalf("Create() = %+v", created)
+	}
+	if _, err := repo.Create(ctx, created); !errors.Is(err, port.ErrEmployeeConflict) {
+		t.Fatalf("duplicate Create() error = %v, want ErrEmployeeConflict", err)
+	}
+
+	updated, err := repo.Update(ctx, id, "Updated Employee", domain.RoleTC)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.Name != "Updated Employee" || updated.Role != domain.RoleTC {
+		t.Fatalf("Update() = %+v", updated)
+	}
+	if _, err := repo.Update(ctx, "MISSING", "Nobody", domain.RoleNV); !errors.Is(err, port.ErrEmployeeNotFound) {
+		t.Fatalf("missing Update() error = %v, want ErrEmployeeNotFound", err)
+	}
+
+	if _, err := repo.SetActive(ctx, id, false); err != nil {
+		t.Fatalf("SetActive(false) error = %v", err)
+	}
+	active, err := repo.List(ctx, false)
+	if err != nil {
+		t.Fatalf("List(false) error = %v", err)
+	}
+	if hasEmployee(active, id) {
+		t.Fatalf("List(false) unexpectedly contains inactive employee %s", id)
+	}
+	all, err := repo.List(ctx, true)
+	if err != nil {
+		t.Fatalf("List(true) error = %v", err)
+	}
+	if employee, ok := findEmployee(all, id); !ok || employee.Active {
+		t.Fatalf("List(true) did not return inactive employee: %+v", employee)
+	}
+	if restored, err := repo.SetActive(ctx, id, true); err != nil || !restored.Active {
+		t.Fatalf("SetActive(true) = %+v, %v", restored, err)
 	}
 }
 
@@ -134,4 +190,18 @@ func hasLeaveDay(employees []domain.Employee, employeeID string, date domain.Dat
 		}
 	}
 	return false
+}
+
+func hasEmployee(employees []domain.Employee, employeeID string) bool {
+	_, ok := findEmployee(employees, employeeID)
+	return ok
+}
+
+func findEmployee(employees []domain.Employee, employeeID string) (domain.Employee, bool) {
+	for _, employee := range employees {
+		if employee.EmployeeID == employeeID {
+			return employee, true
+		}
+	}
+	return domain.Employee{}, false
 }

@@ -41,6 +41,7 @@ func main() {
 
 	srv := &httpapi.Server{
 		Employees:  service.NewEmployeeService(employeeRepo),
+		Config:     service.NewConfigService(configRepo),
 		Schedule:   service.NewScheduleService(solverGateway, employeeRepo, configRepo, scheduleRepo),
 		Approve:    service.NewApproveService(scheduleRepo),
 		Capacity:   service.NewCapacityService(solverGateway, employeeRepo, configRepo),

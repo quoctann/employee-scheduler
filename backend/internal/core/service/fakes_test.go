@@ -42,6 +42,7 @@ type fakeEmployeeRepository struct {
 	employees        []domain.Employee
 	availability     domain.AvailabilityMap
 	listErr          error
+	includeInactive  bool
 	availabilityErr  error
 	availabilityFrom domain.Date
 	availabilityTo   domain.Date
@@ -50,10 +51,42 @@ type fakeEmployeeRepository struct {
 	setAvailabilityCalls []domain.ShiftAvailability
 	setLeaveDayErr       error
 	setLeaveDayCalls     []bool
+
+	createEmployee   domain.Employee
+	createResult     domain.Employee
+	createErr        error
+	updateEmployeeID string
+	updateName       string
+	updateRole       domain.Role
+	updateResult     domain.Employee
+	updateErr        error
+	setActiveID      string
+	setActiveValue   bool
+	setActiveResult  domain.Employee
+	setActiveErr     error
 }
 
-func (f *fakeEmployeeRepository) List(_ context.Context) ([]domain.Employee, error) {
+func (f *fakeEmployeeRepository) List(_ context.Context, includeInactive bool) ([]domain.Employee, error) {
+	f.includeInactive = includeInactive
 	return f.employees, f.listErr
+}
+
+func (f *fakeEmployeeRepository) Create(_ context.Context, employee domain.Employee) (domain.Employee, error) {
+	f.createEmployee = employee
+	return f.createResult, f.createErr
+}
+
+func (f *fakeEmployeeRepository) Update(_ context.Context, employeeID, name string, role domain.Role) (domain.Employee, error) {
+	f.updateEmployeeID = employeeID
+	f.updateName = name
+	f.updateRole = role
+	return f.updateResult, f.updateErr
+}
+
+func (f *fakeEmployeeRepository) SetActive(_ context.Context, employeeID string, active bool) (domain.Employee, error) {
+	f.setActiveID = employeeID
+	f.setActiveValue = active
+	return f.setActiveResult, f.setActiveErr
 }
 
 func (f *fakeEmployeeRepository) Availability(_ context.Context, from, to domain.Date) (domain.AvailabilityMap, error) {

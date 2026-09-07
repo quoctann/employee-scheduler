@@ -1,4 +1,4 @@
-import { getJSON, postJSON, putJSON } from './client'
+import { deleteJSON, getJSON, postJSON, putJSON } from './client'
 import type {
   AckResponse,
   ApproveResponse,
@@ -6,13 +6,48 @@ import type {
   EmployeesResponse,
   LatestScheduleResponse,
   LockedAssignment,
+  Employee,
   ReplacementCandidatesResult,
   SolveResult,
+  Role,
+  SolverConfig,
   TargetSlot,
 } from './types'
 
-export function fetchEmployees() {
-  return getJSON<EmployeesResponse>('/api/v1/employees')
+export function fetchEmployees(includeInactive = false) {
+  const query = includeInactive ? '?include_inactive=true' : ''
+  return getJSON<EmployeesResponse>(`/api/v1/employees${query}`)
+}
+
+export function fetchConfig() {
+  return getJSON<SolverConfig>('/api/v1/config')
+}
+
+export interface CreateEmployeeParams {
+  employee_id: string
+  name: string
+  role: Role
+}
+
+export interface UpdateEmployeeParams {
+  name: string
+  role: Role
+}
+
+export function createEmployee(params: CreateEmployeeParams) {
+  return postJSON<Employee>('/api/v1/employees', params)
+}
+
+export function updateEmployee(employeeId: string, params: UpdateEmployeeParams) {
+  return putJSON<Employee>(`/api/v1/employees/${encodeURIComponent(employeeId)}`, params)
+}
+
+export function deactivateEmployee(employeeId: string) {
+  return deleteJSON<Employee>(`/api/v1/employees/${encodeURIComponent(employeeId)}`)
+}
+
+export function restoreEmployee(employeeId: string) {
+  return postJSON<Employee>(`/api/v1/employees/${encodeURIComponent(employeeId)}/restore`, {})
 }
 
 export function fetchLatestSchedule() {

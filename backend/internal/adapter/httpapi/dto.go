@@ -73,6 +73,17 @@ type setLeaveDayRequestBody struct {
 	OnLeave bool        `json:"on_leave"`
 }
 
+type createEmployeeRequestBody struct {
+	EmployeeID string      `json:"employee_id"`
+	Name       string      `json:"name"`
+	Role       domain.Role `json:"role"`
+}
+
+type updateEmployeeRequestBody struct {
+	Name string      `json:"name"`
+	Role domain.Role `json:"role"`
+}
+
 type ackResponseBody struct {
 	OK bool `json:"ok"`
 }

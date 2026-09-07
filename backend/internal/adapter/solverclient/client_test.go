@@ -43,6 +43,7 @@ func TestClient_Solve_SendsExpectedRequestAndDecodesResult(t *testing.T) {
 		StartDate:  mustDate(t, "2026-09-07"),
 		NumDays:    1,
 		TimeLimitS: 5,
+		Employees:  []domain.Employee{{EmployeeID: "NV01", Name: "Nhan vien 01", Role: domain.RoleNV, Active: false}},
 	})
 	if err != nil {
 		t.Fatalf("Solve() error = %v", err)
@@ -59,6 +60,10 @@ func TestClient_Solve_SendsExpectedRequestAndDecodesResult(t *testing.T) {
 	}
 	if _, ok := gotBody["employees"].([]any); !ok {
 		t.Fatalf("expected employees to serialize as a JSON array, got %T: %v", gotBody["employees"], gotBody["employees"])
+	}
+	employee := gotBody["employees"].([]any)[0].(map[string]any)
+	if _, ok := employee["active"]; ok {
+		t.Fatalf("solver request must not expose management-only active state: %+v", employee)
 	}
 	if _, ok := gotBody["locked_assignments"].([]any); !ok {
 		t.Fatalf("expected locked_assignments to serialize as a JSON array, got %T: %v", gotBody["locked_assignments"], gotBody["locked_assignments"])

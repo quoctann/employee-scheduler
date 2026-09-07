@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useApprove, useEmployees, useLatestSchedule, useSolve } from '@/api/hooks'
+import { useApprove, useConfig, useEmployees, useLatestSchedule, useSolve } from '@/api/hooks'
 import { errorMessage } from '@/lib/errors'
 import { addWeeks, dateRange, startOfWeek, todayISO } from '@/lib/dates'
 import type { LockedAssignment, ScheduleEntry } from '@/api/types'
@@ -29,6 +29,7 @@ export function ScheduleView() {
   const [overridesRunID, setOverridesRunID] = useState<number | undefined>(undefined)
 
   const employeesQuery = useEmployees()
+  const configQuery = useConfig()
   const latestQuery = useLatestSchedule()
   const solve = useSolve()
   const approve = useApprove()
@@ -111,7 +112,7 @@ export function ScheduleView() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Chạy solver</CardTitle>
+          <CardTitle>Chạy trình xếp lịch</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
@@ -162,11 +163,11 @@ export function ScheduleView() {
               />
             </div>
             <Button type="submit" disabled={solve.isPending}>
-              {solve.isPending ? 'Đang chạy...' : 'Solve'}
+              {solve.isPending ? 'Đang chạy...' : 'Xếp lịch'}
             </Button>
             {result && (
               <Button type="button" variant="outline" onClick={handleApprove} disabled={approve.isPending}>
-                {approve.isPending ? 'Đang duyệt...' : `Approve lịch này${overrides.size > 0 ? ` (${overrides.size} ô đã sửa)` : ''}`}
+                {approve.isPending ? 'Đang duyệt...' : `Phê duyệt lịch này${overrides.size > 0 ? ` (${overrides.size} ô đã sửa)` : ''}`}
               </Button>
             )}
           </form>
@@ -174,16 +175,17 @@ export function ScheduleView() {
       </Card>
 
       {employeesQuery.isLoading && <p className="text-sm text-muted-foreground">Đang tải danh sách nhân viên...</p>}
-      {employeesQuery.isError && (
+       {employeesQuery.isError && (
         <p className="text-sm text-destructive">Không tải được nhân viên: {errorMessage(employeesQuery.error)}</p>
-      )}
+       )}
+       {configQuery.isError && <p className="text-sm text-destructive">Không tải được cấu hình cổng/ca: {errorMessage(configQuery.error)}</p>}
 
       {result && employeesQuery.data ? (
         <>
           <Card>
             <CardHeader>
               <CardTitle>
-                Lịch xếp ca — {result.status} ({result.wall_time_s.toFixed(2)}s)
+                Lịch xếp ca - {result.status} ({result.wall_time_s.toFixed(2)}s)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -209,6 +211,7 @@ export function ScheduleView() {
                 schedule={scheduleForTable}
                 startDate={result.start_date}
                 numDays={result.num_days}
+                shiftHours={configQuery.data?.shift_hours ?? {}}
                 overrides={overrides}
                 onEditCell={handleEditCell}
               />

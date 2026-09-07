@@ -10,6 +10,7 @@ export interface Employee {
   employee_id: string
   name: string
   role: Role
+  active: boolean
   leave_days?: string[]
 }
 
@@ -115,4 +116,10 @@ export interface ApproveResponse {
 
 export interface AckResponse {
   ok: boolean
+}
+
+export type ShiftHours = Record<string, Partial<Record<ShiftType, number>>>
+
+export interface SolverConfig {
+  shift_hours: ShiftHours
 }

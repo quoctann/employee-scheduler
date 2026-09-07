@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
@@ -20,13 +23,13 @@ func NewEmployeeRepository(pool *pgxpool.Pool) *EmployeeRepository {
 
 var _ port.EmployeeRepository = (*EmployeeRepository)(nil)
 
-func (r *EmployeeRepository) List(ctx context.Context) ([]domain.Employee, error) {
+func (r *EmployeeRepository) List(ctx context.Context, includeInactive bool) ([]domain.Employee, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT employee_id, name, role
+		SELECT employee_id, name, role, active
 		FROM employees
-		WHERE active
+		WHERE active OR $1
 		ORDER BY employee_id
-	`)
+	`, includeInactive)
 	if err != nil {
 		return nil, fmt.Errorf("query employees: %w", err)
 	}
@@ -36,7 +39,7 @@ func (r *EmployeeRepository) List(ctx context.Context) ([]domain.Employee, error
 	for rows.Next() {
 		var e domain.Employee
 		var role string
-		if err := rows.Scan(&e.EmployeeID, &e.Name, &role); err != nil {
+		if err := rows.Scan(&e.EmployeeID, &e.Name, &role, &e.Active); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan employee: %w", err)
 		}
@@ -76,6 +79,56 @@ func (r *EmployeeRepository) List(ctx context.Context) ([]domain.Employee, error
 		result = append(result, *byID[id])
 	}
 	return result, nil
+}
+
+func (r *EmployeeRepository) Create(ctx context.Context, employee domain.Employee) (domain.Employee, error) {
+	row := r.pool.QueryRow(ctx, `
+		INSERT INTO employees (employee_id, name, role, active)
+		VALUES ($1, $2, $3, TRUE)
+		RETURNING employee_id, name, role, active
+	`, employee.EmployeeID, employee.Name, employee.Role)
+	return scanEmployee(row)
+}
+
+func (r *EmployeeRepository) Update(ctx context.Context, employeeID, name string, role domain.Role) (domain.Employee, error) {
+	row := r.pool.QueryRow(ctx, `
+		UPDATE employees
+		SET name = $2, role = $3, updated_at = now()
+		WHERE employee_id = $1
+		RETURNING employee_id, name, role, active
+	`, employeeID, name, role)
+	return scanEmployee(row)
+}
+
+func (r *EmployeeRepository) SetActive(ctx context.Context, employeeID string, active bool) (domain.Employee, error) {
+	row := r.pool.QueryRow(ctx, `
+		UPDATE employees
+		SET active = $2, updated_at = now()
+		WHERE employee_id = $1
+		RETURNING employee_id, name, role, active
+	`, employeeID, active)
+	return scanEmployee(row)
+}
+
+type employeeRow interface {
+	Scan(dest ...any) error
+}
+
+func scanEmployee(row employeeRow) (domain.Employee, error) {
+	var employee domain.Employee
+	var role string
+	if err := row.Scan(&employee.EmployeeID, &employee.Name, &role, &employee.Active); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Employee{}, port.ErrEmployeeNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.Employee{}, port.ErrEmployeeConflict
+		}
+		return domain.Employee{}, fmt.Errorf("scan employee: %w", err)
+	}
+	employee.Role = domain.Role(role)
+	return employee, nil
 }
 
 // Availability is bounded to [from, to] so a solve over a 28-day horizon

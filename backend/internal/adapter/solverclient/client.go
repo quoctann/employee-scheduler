@@ -57,7 +57,7 @@ func (c *Client) Solve(ctx context.Context, req port.SolveRequest) (domain.Solve
 	body := wireSolveRequest{
 		StartDate:         req.StartDate,
 		NumDays:           req.NumDays,
-		Employees:         nonNilEmployees(req.Employees),
+		Employees:         toWireEmployees(req.Employees),
 		Availability:      nonNilAvailability(req.Availability),
 		LockedAssignments: nonNilLocked(req.LockedAssignments),
 		CarryIn:           req.CarryIn,
@@ -95,7 +95,7 @@ func (c *Client) ReplacementCandidates(ctx context.Context, req port.Replacement
 	body := wireReplacementCandidatesRequest{
 		StartDate:          req.StartDate,
 		NumDays:            req.NumDays,
-		Employees:          nonNilEmployees(req.Employees),
+		Employees:          toWireEmployees(req.Employees),
 		Availability:       nonNilAvailability(req.Availability),
 		CurrentSchedule:    nonNilSchedule(req.CurrentSchedule),
 		CarryIn:            req.CarryIn,
@@ -164,11 +164,20 @@ func nonNilAvailability(m domain.AvailabilityMap) domain.AvailabilityMap {
 	return m
 }
 
-func nonNilEmployees(e []domain.Employee) []domain.Employee {
-	if e == nil {
-		return []domain.Employee{}
+func toWireEmployees(employees []domain.Employee) []wireEmployee {
+	if employees == nil {
+		return []wireEmployee{}
 	}
-	return e
+	result := make([]wireEmployee, len(employees))
+	for i, employee := range employees {
+		result[i] = wireEmployee{
+			EmployeeID: employee.EmployeeID,
+			Name:       employee.Name,
+			Role:       employee.Role,
+			LeaveDays:  employee.LeaveDays,
+		}
+	}
+	return result
 }
 
 func nonNilLocked(l []domain.LockedAssignment) []domain.LockedAssignment {

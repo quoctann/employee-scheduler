@@ -31,12 +31,39 @@ func (f *fakeSolverGateway) ReplacementCandidates(context.Context, port.Replacem
 type fakeEmployeeRepository struct {
 	employees          []domain.Employee
 	availability       domain.AvailabilityMap
+	includeInactive    bool
+	listErr            error
 	setAvailabilityErr error
 	setLeaveDayErr     error
+	createResult       domain.Employee
+	createErr          error
+	updateResult       domain.Employee
+	updateErr          error
+	setActiveResult    domain.Employee
+	setActiveErr       error
 }
 
-func (f *fakeEmployeeRepository) List(context.Context) ([]domain.Employee, error) {
-	return f.employees, nil
+func (f *fakeEmployeeRepository) List(_ context.Context, includeInactive bool) ([]domain.Employee, error) {
+	f.includeInactive = includeInactive
+	return f.employees, f.listErr
+}
+func (f *fakeEmployeeRepository) Create(_ context.Context, employee domain.Employee) (domain.Employee, error) {
+	if f.createResult.EmployeeID == "" {
+		f.createResult = employee
+	}
+	return f.createResult, f.createErr
+}
+func (f *fakeEmployeeRepository) Update(_ context.Context, employeeID, name string, role domain.Role) (domain.Employee, error) {
+	if f.updateResult.EmployeeID == "" {
+		f.updateResult = domain.Employee{EmployeeID: employeeID, Name: name, Role: role, Active: true}
+	}
+	return f.updateResult, f.updateErr
+}
+func (f *fakeEmployeeRepository) SetActive(_ context.Context, employeeID string, active bool) (domain.Employee, error) {
+	if f.setActiveResult.EmployeeID == "" {
+		f.setActiveResult = domain.Employee{EmployeeID: employeeID, Active: active}
+	}
+	return f.setActiveResult, f.setActiveErr
 }
 func (f *fakeEmployeeRepository) Availability(context.Context, domain.Date, domain.Date) (domain.AvailabilityMap, error) {
 	return f.availability, nil
@@ -52,10 +79,11 @@ func (f *fakeEmployeeRepository) SetLeaveDay(context.Context, string, domain.Dat
 
 type fakeConfigRepository struct {
 	config domain.SolverConfig
+	err    error
 }
 
 func (f *fakeConfigRepository) Get(context.Context) (domain.SolverConfig, error) {
-	return f.config, nil
+	return f.config, f.err
 }
 
 type fakeScheduleRepository struct {

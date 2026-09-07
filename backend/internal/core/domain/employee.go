@@ -24,6 +24,7 @@ type Employee struct {
 	EmployeeID string `json:"employee_id"`
 	Name       string `json:"name"`
 	Role       Role   `json:"role"`
+	Active     bool   `json:"active"`
 	LeaveDays  []Date `json:"leave_days,omitempty"`
 }
 

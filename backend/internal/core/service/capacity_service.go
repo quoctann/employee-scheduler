@@ -37,7 +37,7 @@ func (s *CapacityService) Check(ctx context.Context, params CapacityParams) (dom
 	if params.EmployeeCount != nil {
 		employeeCount = *params.EmployeeCount
 	} else {
-		employees, err := s.Employees.List(ctx)
+		employees, err := s.Employees.List(ctx, false)
 		if err != nil {
 			return domain.CapacityCheckResult{}, fmt.Errorf("list employees: %w", err)
 		}

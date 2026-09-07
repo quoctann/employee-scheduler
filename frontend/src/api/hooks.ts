@@ -2,9 +2,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from './endpoints'
 import type { SetAvailabilityParams, SetLeaveDayParams } from './endpoints'
 import type { LockedAssignment } from './types'
+import type { CreateEmployeeParams, UpdateEmployeeParams } from './endpoints'
 
 export function useEmployees() {
-  return useQuery({ queryKey: ['employees'], queryFn: api.fetchEmployees })
+  return useQuery({ queryKey: ['employees'], queryFn: () => api.fetchEmployees() })
+}
+
+export function useAllEmployees() {
+  return useQuery({ queryKey: ['employees', 'all'], queryFn: () => api.fetchEmployees(true) })
+}
+
+export function useConfig() {
+  return useQuery({ queryKey: ['config'], queryFn: api.fetchConfig })
 }
 
 export function useLatestSchedule() {
@@ -59,4 +68,32 @@ export function useSetLeaveDay() {
     // rather than keep displaying the pre-click status.
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   })
+}
+
+function useEmployeeMutation<TVariables>(mutationFn: (variables: TVariables) => Promise<unknown>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['employees'] })
+    },
+  })
+}
+
+export function useCreateEmployee() {
+  return useEmployeeMutation((params: CreateEmployeeParams) => api.createEmployee(params))
+}
+
+export function useUpdateEmployee() {
+  return useEmployeeMutation(({ employeeId, params }: { employeeId: string; params: UpdateEmployeeParams }) =>
+    api.updateEmployee(employeeId, params),
+  )
+}
+
+export function useDeactivateEmployee() {
+  return useEmployeeMutation((employeeId: string) => api.deactivateEmployee(employeeId))
+}
+
+export function useRestoreEmployee() {
+  return useEmployeeMutation((employeeId: string) => api.restoreEmployee(employeeId))
 }

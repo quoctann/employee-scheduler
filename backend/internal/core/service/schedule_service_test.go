@@ -24,7 +24,7 @@ func TestScheduleService_Solve_BuildsRequestFromRepositoriesAndPersistsResult(t 
 	availability := domain.AvailabilityMap{"NV01": {start: {Sang: true, Dem: true}}}
 	config := domain.SolverConfig{TargetHoursPerWeek: 44}
 	locked := []domain.LockedAssignment{{EmployeeID: "NV01", Date: start, Off: true}}
-	carryIn := domain.CarryIn{WorkedNightBeforeStart: []string{"NV02"}}
+	carryIn := domain.CarryIn{WorkedNightBeforeStart: []string{"NV01"}}
 
 	solver := &fakeSolverGateway{solveResult: domain.SolveResult{Status: domain.StatusOptimal}}
 	empRepo := &fakeEmployeeRepository{employees: employees, availability: availability}
@@ -161,7 +161,11 @@ func TestSanitizeLockedAssignments(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeLockedAssignments([]domain.LockedAssignment{tt.locked}, tt.employees, tt.availability)
+			employees := tt.employees
+			if employees == nil {
+				employees = []domain.Employee{{EmployeeID: "NV01"}}
+			}
+			got := sanitizeLockedAssignments([]domain.LockedAssignment{tt.locked}, employees, tt.availability)
 			if len(got) != 1 {
 				t.Fatalf("expected 1 result, got %d", len(got))
 			}
@@ -175,6 +179,34 @@ func TestSanitizeLockedAssignments(t *testing.T) {
 				t.Fatalf("sanitized assignment fails its own shape invariant: %v", err)
 			}
 		})
+	}
+}
+
+func TestScheduleService_FiltersInactiveEmployeeState(t *testing.T) {
+	start := mustDate(t, "2026-09-07")
+	gate := "A"
+	shift := domain.ShiftSang
+	active := []domain.Employee{{EmployeeID: "NV01", Role: domain.RoleNV}}
+	locked := []domain.LockedAssignment{
+		{EmployeeID: "NV01", Date: start, Gate: &gate, Shift: &shift},
+		{EmployeeID: "NV02", Date: start, Off: true},
+	}
+	solver := &fakeSolverGateway{}
+	svc := NewScheduleService(
+		solver,
+		&fakeEmployeeRepository{employees: active, availability: domain.AvailabilityMap{"NV01": {start: {Sang: true}}}},
+		&fakeConfigRepository{},
+		&fakeScheduleRepository{approvedAssignments: locked, carryIn: domain.CarryIn{WorkedNightBeforeStart: []string{"NV01", "NV02"}}},
+	)
+
+	if _, err := svc.Solve(context.Background(), SolveParams{StartDate: start, NumDays: 1}); err != nil {
+		t.Fatalf("Solve() error = %v", err)
+	}
+	if len(solver.solveReq.LockedAssignments) != 1 || solver.solveReq.LockedAssignments[0].EmployeeID != "NV01" {
+		t.Fatalf("inactive locks were not removed: %+v", solver.solveReq.LockedAssignments)
+	}
+	if got := solver.solveReq.CarryIn.WorkedNightBeforeStart; len(got) != 1 || got[0] != "NV01" {
+		t.Fatalf("inactive carry-in was not removed: %+v", got)
 	}
 }
 
