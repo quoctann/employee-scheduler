@@ -1,9 +1,13 @@
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+SERVICE_DIR = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=SERVICE_DIR / ".env", env_prefix="", extra="ignore")
 
     # required, no default: a missing/misconfigured API_KEY must fail the service at startup
     # rather than silently accepting a well-known value from every caller.

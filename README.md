@@ -20,17 +20,28 @@ underlying scheduling domain and architecture decisions.
 
 ### 1. Env files
 
-`.env` files can't be committed (and this assistant's permissions block
-writing them directly), so create these three by hand:
+Copy the committed examples, then adjust secrets and local connection details:
+
+```bash
+cp solver-service/.env.example solver-service/.env
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
 
 **`solver-service/.env`**
 ```
 API_KEY=local-dev-key
+ENABLE_DOCS=true
 ```
 
 **`backend/.env`**
 ```
-DATABASE_URL=postgres://postgres:1@localhost:5432/employee_scheduler?sslmode=disable
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_USER=postgres
+DATABASE_PASSWORD=change-me
+DATABASE_NAME=employee_scheduler
+DATABASE_SSLMODE=disable
 SOLVER_API_KEY=local-dev-key
 SOLVER_BASE_URL=http://localhost:8080
 HTTP_PORT=8081
@@ -48,14 +59,16 @@ the solver.)
 
 ### 2. Database
 
-Assumes a Postgres server is already reachable at `localhost:5432` (this repo
-was built against the shared `local-postgres` Docker container, user
-`postgres` / password `1` — adjust `DATABASE_URL` above if yours differs).
+Assumes a Postgres server and its `psql`/`createdb` client tools are already
+available. Adjust the `DATABASE_*` values in `backend/.env` if yours differs.
+The backend also supports `DATABASE_URL` with precedence over discrete values;
+`db-create` intentionally requires discrete values so its destination is clear.
 
 ```bash
-make db-create        # creates the `employee_scheduler` database
-make migrate-install   # one-time: installs the `migrate` CLI (needs Go)
-DATABASE_URL=postgres://postgres:1@localhost:5432/employee_scheduler?sslmode=disable make migrate-up
+make db-create        # creates the configured database on localhost Postgres
+make migrate-install  # one-time: installs the `migrate` CLI (needs Go)
+# Migrate using a URL-encoded password (`@` becomes `%40`, for example):
+DATABASE_URL='postgres://postgres:<encoded-password>@localhost:5432/employee_scheduler?sslmode=disable' make migrate-up
 ```
 
 `migrate-up` applies the schema (`backend/migrations/0001_*`) and seeds a
@@ -78,7 +91,7 @@ make backend    # Go backend on :8081
 make frontend   # Vite dev server on :5173
 ```
 
-(or `make dev` to run all three concurrently in one terminal with
+(or `make start`, equivalent to `make dev`, to run all three concurrently in one terminal with
 interleaved logs). Open **http://localhost:5173**.
 
 ## Verifying it works

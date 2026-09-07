@@ -1,4 +1,4 @@
-.PHONY: solver backend frontend dev db-create migrate-up migrate-down migrate-install
+.PHONY: solver backend frontend dev start db-create migrate-up migrate-down migrate-install
 
 # One-time setup: install the golang-migrate CLI (needs Go + the postgres build tag).
 migrate-install:
@@ -16,7 +16,7 @@ migrate-down:
 	migrate -path backend/migrations -database "$$DATABASE_URL" down
 
 solver:
-	cd solver-service && set -a; [ -f .env ] && . ./.env; set +a; uv run uvicorn scheduler_api.main:app --reload --port 8080
+	cd solver-service && uv run uvicorn scheduler_api.main:app --reload --port 8080
 
 backend:
 	cd backend && set -a; [ -f .env ] && . ./.env; set +a; go run ./cmd/api
@@ -29,3 +29,5 @@ frontend:
 # terminals when you want to watch one service's output cleanly.
 dev:
 	$(MAKE) -j3 solver backend frontend
+
+start: dev

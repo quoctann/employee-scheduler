@@ -1,9 +1,9 @@
 # employee-scheduler / scheduler-api
 
 Stateless FastAPI solver service (OR-Tools CP-SAT) for employee shift scheduling. Ported from
-[`docs/shift_scheduler_mvp.ipynb`](docs/shift_scheduler_mvp.ipynb) — see
-[`docs/memo_mvp_solver_coverage.md`](docs/memo_mvp_solver_coverage.md) for the business rules
-this implements, and [`docs/backlog.txt`](docs/backlog.txt) for open design questions.
+[`../.docs/shift_scheduler_mvp.ipynb`](../.docs/shift_scheduler_mvp.ipynb) — see
+[`../.docs/memo_mvp.md`](../.docs/memo_mvp.md) for the business rules this implements,
+and [`../.docs/backlog.md`](../.docs/backlog.md) for open design questions.
 
 The service holds no state and no database: every request carries all the data needed (employees,
 availability, locked/approved assignments, business config). The caller (a Golang backend) owns
@@ -13,16 +13,15 @@ persistence and the approve/audit workflow.
 
 ```bash
 uv sync
-export API_KEY=$(openssl rand -hex 32)   # required, min 8 chars — no insecure default
+cp .env.example .env
+# Set API_KEY in .env to a secret with at least 8 characters.
 uv run uvicorn scheduler_api.main:app --reload --port 8080
 ```
 
 Interactive API docs are **off by default** (see `ENABLE_DOCS` below — this service has no
 Ingress in front of it and the docs routes aren't behind the API-key check). For local dev:
 
-```bash
-export ENABLE_DOCS=true
-```
+Set `ENABLE_DOCS=true` in `.env`.
 
 Then: http://127.0.0.1:8080/docs (Swagger UI) or `/openapi.json`.
 
@@ -34,7 +33,7 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 ```
 
-## Configuration (environment variables)
+## Configuration (`.env` or environment variables)
 
 | Variable               | Default   | Meaning                                                                    |
 |-------------------------|-----------|------------------------------------------------------------------------------|
