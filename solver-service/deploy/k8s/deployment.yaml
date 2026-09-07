@@ -1,0 +1,73 @@
+# Internal solver service — no Ingress, called service-to-service (e.g. from the Golang backend)
+# over the ClusterIP Service in service.yaml. API_KEY comes from a Secret you create separately, e.g.:
+#   kubectl create secret generic scheduler-api-secrets --from-literal=API_KEY=<value> -n <namespace>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-api
+  labels:
+    app: scheduler-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scheduler-api
+  template:
+    metadata:
+      labels:
+        app: scheduler-api
+    spec:
+      automountServiceAccountToken: false  # this pod never talks to the k8s API
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: scheduler-api
+          image: scheduler-api:latest  # replace with the built/pushed image tag
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: scheduler-api-secrets
+                  key: API_KEY
+            - name: MAX_TIME_LIMIT_S
+              value: "60"
+            # keep in lockstep with the CPU limit below (cp_model.CpSolver
+            # num_search_workers should not exceed available CPU)
+            - name: NUM_SEARCH_WORKERS
+              value: "2"
+            # keep in lockstep with cpu limit / num_search_workers: each concurrent solve spawns
+            # NUM_SEARCH_WORKERS native threads, so max_concurrent_solves * NUM_SEARCH_WORKERS
+            # should not exceed the cpu limit below by much.
+            - name: MAX_CONCURRENT_SOLVES
+              value: "2"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "1"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 20

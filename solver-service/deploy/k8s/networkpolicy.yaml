@@ -1,0 +1,24 @@
+# Restricts who can reach scheduler-api's ClusterIP Service — by default a ClusterIP is
+# reachable from any pod in the cluster, and the API-key check is otherwise the only thing
+# standing between "any workload in the cluster/namespace" and this service.
+#
+# Edit the `from` selector to match the Golang backend's pod labels (and add a namespaceSelector
+# too if it lives in a different namespace than this Deployment).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scheduler-api
+spec:
+  podSelector:
+    matchLabels:
+      app: scheduler-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: acqpay-backend  # <- replace with the Golang backend's actual pod label
+      ports:
+        - protocol: TCP
+          port: 8080
