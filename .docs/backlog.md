@@ -1,0 +1,3 @@
+1. Rolling horizon giữa các tuần — đã xác nhận qua ô màu xanh là công ty đang làm thủ công (nhìn ca đêm cuối tuần trước để chặn sáng đầu tuần sau). Khi build tech, state lưu ở DB cần giữ lại "ai làm đêm ngày cuối cùng của kỳ trước" để inject vào lần solve kế tiếp — đây là chi tiết implementation, không phải quyết định business nữa.
+
+2. Danh sách ứng viên thay thế (mục 9b) — đã thống nhất solver trả về top-N thay vì tự quyết, nhưng chưa bàn tiêu chí xếp hạng ứng viên (ví dụ: ưu tiên ai gần target nhất, ai ít bị xáo trộn lịch nhất, hay ai đăng ký sẵn sàng ca đó). Cái này ảnh hưởng thuật toán chấm điểm ứng viên — có thể để mình đề xuất tiêu chí mặc định khi build, bạn review sau, không cần chốt trước.

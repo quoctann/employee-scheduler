@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS schedule_employee_summary;
+DROP TABLE IF EXISTS schedule_shortages;
+DROP TABLE IF EXISTS schedule_assignments;
+DROP TABLE IF EXISTS schedule_runs;
+DROP TABLE IF EXISTS approved_assignments;
+DROP TABLE IF EXISTS solver_settings;
+DROP TABLE IF EXISTS gate_shift_requirements;
+DROP TABLE IF EXISTS gates;
+DROP TABLE IF EXISTS employee_availability;
+DROP TABLE IF EXISTS employee_leave_days;
+DROP TABLE IF EXISTS employees;
