@@ -106,16 +106,16 @@ jobs:
           # `latest` is just a convenience for local `docker pull`, never referenced by k8s manifests.
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-      - name: Make GHCR package public
-        # New GHCR packages published via GITHUB_TOKEN default to PRIVATE, so k8s
-        # would need an imagePullSecret without this step. NOTE: this call can fail
-        # with "Resource not accessible by integration" depending on token/package
-        # ownership — if that happens, do it once via GHCR package settings ->
-        # "Inherit access from source repository" instead, and delete this step.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PACKAGE: ${{ matrix.image }}
-        run: gh api --method PATCH "user/packages/container/$PACKAGE" -f visibility=public
+          # NOTE: new GHCR packages published via GITHUB_TOKEN default to PRIVATE.
+          # There used to be a "Make GHCR package public" step here calling
+          # `gh api --method PATCH user/packages/container/$PACKAGE -f visibility=public`,
+          # but that always fails with 404 Not Found: the /user/packages/* API
+          # requires a token tied to a real user account, and GITHUB_TOKEN
+          # authenticates as the github-actions[bot] workflow identity, not as
+          # quoctann — so GitHub can't resolve "the authenticated user" at all
+          # for that endpoint. Fix is a one-time manual step per package (visibility
+          # sticks forever once set, it doesn't reset on new pushes), documented in
+          # pisces-infra/workloads/employee-scheduler/README.md — no automation needed here.
 
   update-gitops:
     # This is the CI -> CD handoff: this repo never touches Kubernetes manifests
