@@ -1,20 +1,27 @@
 name: CI and publish
 
+# Reference workflow for a "monorepo with N deployable services" CI/CD pattern:
+# test each service independently -> build+push all images only after tests pass
+# -> notify a separate GitOps repo to roll the new images out.
 on:
-  pull_request:
+  pull_request: # run tests on PRs, but never publish/deploy from a PR
   push:
     branches:
-      - main
-  workflow_dispatch:
+      - main # publish + trigger deploy only from main
+  workflow_dispatch: # allows a manual re-run/re-publish without a new commit
 
 concurrency:
+  # one in-flight run per ref: a second push to main cancels the previous run's
+  # test/build (cheap to redo), so main never publishes stale/out-of-order images.
   group: employee-scheduler-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: read # least privilege by default; jobs that need more elevate per-job below
 
 jobs:
+  # One job per service, run in parallel. Keep these fast and independent so a
+  # broken frontend build doesn't block backend feedback, etc.
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -24,7 +31,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.25.6
+          go-version: 1.25.6 # keep in sync with backend/go.mod and the Dockerfile base image
       - run: go test ./...
 
   solver:
@@ -35,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --locked --all-groups
+      - run: uv sync --locked --all-groups # --locked fails CI if uv.lock is out of date
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pytest --cov=src --cov-report=term-missing
@@ -54,17 +61,21 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm run build
+      - run: npm run build # catches TS/build errors before we ever build a Docker image
 
   publish:
+    # Gate: only build+push images on an actual main push (or manual dispatch), and
+    # only after every test job above succeeded. PRs stop here.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: [backend, solver, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # scoped up only in this job, only for pushing to GHCR
     strategy:
       matrix:
+        # One Docker build per service, same job definition reused via matrix so
+        # adding a 4th service later is a one-line addition here.
         include:
           - name: frontend
             context: frontend
@@ -82,31 +93,44 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN is enough to push, no extra PAT needed
       - uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64 # homelab k3s nodes are amd64; add arches here if you add arm nodes
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          # SHA tag = the immutable one GitOps actually deploys (see update-gitops below).
+          # `latest` is just a convenience for local `docker pull`, never referenced by k8s manifests.
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
       - name: Make GHCR package public
+        # New GHCR packages published via GITHUB_TOKEN default to PRIVATE, so k8s
+        # would need an imagePullSecret without this step. NOTE: this call can fail
+        # with "Resource not accessible by integration" depending on token/package
+        # ownership — if that happens, do it once via GHCR package settings ->
+        # "Inherit access from source repository" instead, and delete this step.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE: ${{ matrix.image }}
         run: gh api --method PATCH "user/packages/container/$PACKAGE" -f visibility=public
 
   update-gitops:
+    # This is the CI -> CD handoff: this repo never touches Kubernetes manifests
+    # directly. It just tells the GitOps repo's own workflow "here is a new
+    # immutable SHA, go deploy it" — keeping build and deploy concerns/permissions separate.
     needs: publish
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch deployment update
         env:
+          # A cross-repo `workflow_dispatch` API call requires a PAT with rights on
+          # the *target* repo — GITHUB_TOKEN is scoped only to this repo, so it can't
+          # trigger a workflow in pisces-infra. Hence a separate secret (INFRA_DISPATCH_PAT).
           GH_TOKEN: ${{ secrets.INFRA_DISPATCH_PAT }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ github.sha }} # full 40-char SHA — the infra workflow validates this format
         run: >-
           gh api --method POST
           repos/quoctann/pisces-infra/actions/workflows/deploy-employee-scheduler.yml/dispatches
