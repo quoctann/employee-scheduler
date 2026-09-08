@@ -1,26 +1,52 @@
 # Employee Scheduler
 
-Three services:
+Employee Scheduler is a three-service application for managing employees,
+availability, staffing requirements, shift schedules, and replacement
+candidates.
 
-- **`solver-service/`** — stateless Python FastAPI + OR-Tools CP-SAT solver. Never
-  touches a database; called over HTTP with an `X-API-Key` header.
-- **`backend/`** — Go, hexagonal architecture (`internal/core/{domain,port,service}`
-  + `internal/adapter/{http,postgres,solverclient}`). Owns Postgres persistence
-  and orchestrates calls to `solver-service`. No auth — internal demo scope.
-- **`frontend/`** — Vite + React + TypeScript + shadcn/ui + Tailwind + TanStack
-  Table/Query. Talks only to the Go backend.
+## Architecture
 
-See [docs/mvp_production_gaps.md](docs/mvp_production_gaps.md) for what's
-intentionally deferred past this demo pass, and
-[docs/20260907_solver_plan.md](docs/20260907_solver_plan.md) /
-[docs/memo_mvp_solver_coverage.md](docs/memo_mvp_solver_coverage.md) for the
-underlying scheduling domain and architecture decisions.
+| Service | Stack | Responsibility | Local port |
+| --- | --- | --- | --- |
+| `frontend/` | React 19, TypeScript, Vite, Tailwind CSS, TanStack Query/Table | Management UI; communicates only with the backend | `5173` |
+| `backend/` | Go, PostgreSQL, hexagonal architecture | Owns persistence and the approval workflow; orchestrates solver calls | `8081` |
+| `solver-service/` | Python, FastAPI, OR-Tools CP-SAT | Stateless scheduling, capacity checks, and replacement ranking | `8080` |
 
-## One-time setup
+```text
+Browser -> frontend -> backend -> PostgreSQL
+                           |
+                           +----> solver-service
+```
 
-### 1. Env files
+The frontend and backend have no authentication in the current demo scope.
+The solver is an internal service: all `/api/v1/*` requests require an
+`X-API-Key` header, while `/healthz` is public for health probes.
 
-Copy the committed examples, then adjust secrets and local connection details:
+## Prerequisites
+
+- Go `1.25.6`
+- Python `3.11+` and [uv](https://docs.astral.sh/uv/)
+- Node.js `22` and npm
+- PostgreSQL plus the `psql` client
+- [golang-migrate](https://github.com/golang-migrate/migrate) for database migrations
+- Docker (optional, for database setup and container builds)
+
+## Local Setup
+
+Run all commands in this section from the project root unless noted otherwise.
+
+### 1. Install dependencies
+
+```bash
+cd solver-service && uv sync && cd ..
+cd frontend && npm ci && cd ..
+make migrate-install
+```
+
+`make migrate-install` installs the `migrate` CLI into your Go binary path and
+only needs to be run once.
+
+### 2. Configure environment variables
 
 ```bash
 cp solver-service/.env.example solver-service/.env
@@ -28,97 +54,208 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-**`solver-service/.env`**
-```
-API_KEY=local-dev-key
-ENABLE_DOCS=true
-```
+The committed examples are ready for the default local ports. Change secrets
+and connection settings as needed. `SOLVER_API_KEY` in `backend/.env` must match
+`API_KEY` in `solver-service/.env`.
 
-**`backend/.env`**
-```
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_USER=postgres
-DATABASE_PASSWORD=change-me
-DATABASE_NAME=employee_scheduler
-DATABASE_SSLMODE=disable
-SOLVER_API_KEY=local-dev-key
-SOLVER_BASE_URL=http://localhost:8080
-HTTP_PORT=8081
-CORS_ORIGIN=http://localhost:5173
-```
+#### Solver configuration
 
-**`frontend/.env`**
-```
-VITE_API_BASE_URL=http://localhost:8081
-```
+| Variable | Default | Description |
+| --- | --- | --- |
+| `API_KEY` | Required | Shared secret for `X-API-Key`; minimum 8 characters |
+| `MAX_TIME_LIMIT_S` | `60` | Maximum solve time a caller may request |
+| `NUM_SEARCH_WORKERS` | `4` | CP-SAT worker threads per solve |
+| `MAX_CONCURRENT_SOLVES` | `2` | Maximum concurrent solve requests |
+| `MAX_BODY_BYTES` | `10000000` | Request size limit checked from `Content-Length` |
+| `ENABLE_DOCS` | `false` | Enables unauthenticated `/docs`, `/redoc`, and `/openapi.json` |
+| `LOG_LEVEL` | `INFO` | Python log level |
 
-(`SOLVER_API_KEY` in `backend/.env` must match `API_KEY` in
-`solver-service/.env` — it's the shared secret the Go backend presents to
-the solver.)
+Keep `MAX_CONCURRENT_SOLVES * NUM_SEARCH_WORKERS` close to the solver's CPU
+limit. Enable API docs only in a trusted development environment.
 
-### 2. Database
+#### Backend configuration
 
-Assumes a Postgres server and its `psql`/`createdb` client tools are already
-available. Adjust the `DATABASE_*` values in `backend/.env` if yours differs.
-The backend also supports `DATABASE_URL` with precedence over discrete values;
-`db-create` intentionally requires discrete values so its destination is clear.
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | None | PostgreSQL URL; takes precedence over the discrete database variables |
+| `DATABASE_HOST` | Required without `DATABASE_URL` | PostgreSQL host |
+| `DATABASE_PORT` | `5432` | PostgreSQL port |
+| `DATABASE_USER` | Required without `DATABASE_URL` | PostgreSQL user |
+| `DATABASE_PASSWORD` | Empty | PostgreSQL password |
+| `DATABASE_NAME` | `employee_scheduler` | PostgreSQL database |
+| `DATABASE_SSLMODE` | `disable` | PostgreSQL SSL mode |
+| `SOLVER_API_KEY` | Required | Must match the solver's `API_KEY` |
+| `SOLVER_BASE_URL` | `http://localhost:8080` | Solver service URL |
+| `HTTP_PORT` | `8081` | Backend HTTP port |
+| `CORS_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
+
+#### Frontend configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `http://localhost:8081` | Backend URL; if unset, Vite's local `/api` proxy is used during development |
+
+### 3. Create and migrate the database
+
+The `db-create` target expects a running Docker container named
+`local-postgres` with the `postgres` user:
 
 ```bash
-make db-create        # creates the configured database on localhost Postgres
-make migrate-install  # one-time: installs the `migrate` CLI (needs Go)
-# Migrate using a URL-encoded password (`@` becomes `%40`, for example):
-DATABASE_URL='postgres://postgres:<encoded-password>@localhost:5432/employee_scheduler?sslmode=disable' make migrate-up
+make db-create
 ```
 
-`migrate-up` applies only the schema. Demo data is intentionally separate from
-automatic migrations so production deployments start empty. To initialize a
-development database once, run:
+Alternatively, create `employee_scheduler` with your preferred PostgreSQL
+tool. Then apply the migrations with a URL-encoded password:
+
+```bash
+export DATABASE_URL='postgres://postgres:<encoded-password>@localhost:5432/employee_scheduler?sslmode=disable'
+make migrate-up
+```
+
+Migrations create only the schema. Load the optional development dataset with:
 
 ```bash
 psql "$DATABASE_URL" -f backend/seeds/demo.sql
 ```
 
-The optional dataset contains 21 employees, gates A/B/G/D, and a 28-day
-availability window anchored to the day it is applied.
+The seed contains 21 employees, gates A/B/G/D, and a 28-day availability
+window anchored to the date on which it is applied.
 
-### 3. Frontend dependencies
+## Running Locally
 
-```bash
-cd frontend && npm install
-```
-
-## Running it
-
-Three services, three terminals:
+Start each service in a separate terminal:
 
 ```bash
-make solver     # solver-service on :8080
-make backend    # Go backend on :8081
-make frontend   # Vite dev server on :5173
+make solver
+make backend
+make frontend
 ```
 
-(or `make start`, equivalent to `make dev`, to run all three concurrently in one terminal with
-interleaved logs). Open **http://localhost:5173**.
-
-## Verifying it works
+Or run all three with interleaved logs:
 
 ```bash
-curl localhost:8080/healthz                     # {"status":"ok"}
-curl localhost:8081/api/v1/health               # {"success":true,"data":{"status":"ok"},...}
-curl localhost:8081/api/v1/employees             # 21 seeded employees
-curl -X POST localhost:8081/api/v1/capacity-check -H 'Content-Type: application/json' -d '{"num_days":28}'
+make start
 ```
 
-In the UI: **Lịch xếp ca** tab → Solve → pivot table + shortages + summary
-render → Approve → **Đề xuất thay ca** tab → pick a slot → ranked candidates
-with reasons render.
+Open <http://localhost:5173>. When `ENABLE_DOCS=true`, the solver's Swagger UI
+is available at <http://localhost:8080/docs>.
 
-## Tests
+## Health Check
 
 ```bash
-cd backend && go test ./...                      # unit tests only, no DB needed
-TEST_DATABASE_URL=postgres://postgres:1@localhost:5432/employee_scheduler_test?sslmode=disable go test ./...
-                                                  # includes Postgres integration tests
-                                                  # (create + migrate that DB the same way as above first)
+curl http://localhost:8080/healthz
+curl http://localhost:8081/api/v1/health
+curl http://localhost:8081/api/v1/employees
+curl -X POST http://localhost:8081/api/v1/capacity-check \
+  -H 'Content-Type: application/json' \
+  -d '{"num_days":28}'
 ```
+
+In the UI, create or load employee availability, use **Lịch xếp ca** to solve
+and approve a schedule, then use **Đề xuất thay ca** to rank replacement
+candidates for a slot.
+
+## API Overview
+
+The browser should use only the backend API. The backend enriches requests with
+persisted data before forwarding relevant operations to the solver.
+
+### Backend API
+
+Base URL: `http://localhost:8081/api/v1`
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Service health |
+| `GET`, `POST` | `/employees` | List or create employees |
+| `PUT`, `DELETE` | `/employees/{employee_id}` | Update or deactivate an employee |
+| `POST` | `/employees/{employee_id}/restore` | Restore an employee |
+| `PUT` | `/employees/{employee_id}/availability` | Set availability for a date |
+| `PUT` | `/employees/{employee_id}/leave` | Set leave status for a date |
+| `GET` | `/config` | Get scheduling configuration |
+| `PUT` | `/config/gates/{gate_code}/shifts/{shift_type}` | Update staffing requirements |
+| `PUT` | `/config/gates/{gate_code}/rename` | Rename a gate |
+| `POST` | `/schedule/solve` | Generate a schedule |
+| `GET` | `/schedule/latest` | Get the latest schedule |
+| `POST` | `/schedule/approve` | Approve assignments |
+| `POST` | `/capacity-check` | Compare staffing demand and supply |
+| `POST` | `/candidates` | Rank replacement candidates |
+
+### Solver API
+
+Base URL: `http://localhost:8080/api/v1`. These endpoints are intended for the
+backend, not the browser.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/solve` | Solve a new schedule or re-solve with locked assignments |
+| `POST` | `/capacity-check` | Run a fast demand-versus-supply calculation without CP-SAT |
+| `POST` | `/replacement-candidates` | Return ranked candidates for an open slot; never auto-assigns |
+
+Example direct solver request:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/capacity-check \
+  -H "X-API-Key: $API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"num_days":28,"employee_count":21}'
+```
+
+Every solver request is self-contained because the solver has no database or
+persisted state. Omit `config` from a `/solve` request to use the scheduling
+defaults defined by the domain model. For incident re-solves, pass approved
+cells as `locked_assignments` and leave only the affected area open.
+
+## Tests and Quality Checks
+
+```bash
+# Backend unit tests; PostgreSQL integration tests are skipped without TEST_DATABASE_URL
+cd backend && go test ./... && cd ..
+
+# Backend tests including PostgreSQL integration tests
+cd backend && TEST_DATABASE_URL='postgres://postgres:<encoded-password>@localhost:5432/employee_scheduler_test?sslmode=disable' go test ./... && cd ..
+
+# Solver tests, lint, and formatting
+cd solver-service && uv run pytest --cov=src --cov-report=term-missing && cd ..
+cd solver-service && uv run ruff check src tests && uv run ruff format --check src tests && cd ..
+
+# Frontend lint and production build
+cd frontend && npm run lint && npm run build && cd ..
+```
+
+Create, migrate, and seed `employee_scheduler_test` before running the backend
+integration tests.
+
+## Container Images
+
+Each service has an independent Docker build context:
+
+```bash
+docker build -t employee-scheduler-frontend ./frontend
+docker build -t employee-scheduler-backend ./backend
+docker build -t employee-scheduler-solver ./solver-service
+```
+
+The GitHub Actions workflow tests all services independently, publishes images
+to GHCR after successful `main` builds, and dispatches deployment updates to the
+separate GitOps repository.
+
+## Project Layout
+
+```text
+.
+|-- backend/             # Go API, migrations, repositories, and domain services
+|-- frontend/            # React management UI
+|-- solver-service/      # FastAPI and OR-Tools scheduling engine
+|-- .docs/               # Domain notes, backlog, and production-gap analysis
+|-- .github/workflows/   # CI and image publishing
+|-- Makefile             # Local development and migration commands
+`-- README.md            # Unified project documentation
+```
+
+Additional design references:
+
+- [MVP business rules](.docs/memo_mvp.md)
+- [Production gaps](.docs/mvp_production_gaps.md)
+- [Open design questions](.docs/backlog.md)
+- [Original scheduling notebook](.docs/shift_scheduler_mvp.ipynb)

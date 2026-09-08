@@ -2,7 +2,6 @@
 name = "scheduler-api"
 version = "0.1.0"
 description = "Stateless FastAPI solver service for employee shift scheduling (OR-Tools CP-SAT)"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",
