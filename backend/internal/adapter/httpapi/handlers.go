@@ -174,9 +174,10 @@ func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.Schedule.Solve(r.Context(), service.SolveParams{
-		StartDate:  body.StartDate,
-		NumDays:    body.NumDays,
-		TimeLimitS: body.TimeLimitS,
+		StartDate:      body.StartDate,
+		NumDays:        body.NumDays,
+		TimeLimitS:     body.TimeLimitS,
+		IgnoreApproved: body.IgnoreApproved,
 	})
 	if err != nil {
 		handleError(w, err)
@@ -209,6 +210,49 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, http.StatusOK, approveResponseBody{ApprovedCount: count})
+}
+
+func (s *Server) handleUnapprove(w http.ResponseWriter, r *http.Request) {
+	var body unapproveRequestBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	count, err := s.Approve.Unapprove(r.Context(), service.HorizonParams{
+		StartDate: body.StartDate,
+		NumDays:   body.NumDays,
+	})
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, unapproveResponseBody{UnapprovedCount: count})
+}
+
+func (s *Server) handleListApproved(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("start_date")
+	if raw == "" {
+		handleError(w, fmt.Errorf("%w: start_date is required", service.ErrInvalidInput))
+		return
+	}
+	startDate, err := domain.ParseDate(raw)
+	if err != nil {
+		handleError(w, fmt.Errorf("%w: start_date must be a YYYY-MM-DD date", service.ErrInvalidInput))
+		return
+	}
+	numDays, err := strconv.Atoi(r.URL.Query().Get("num_days"))
+	if err != nil {
+		handleError(w, fmt.Errorf("%w: num_days must be an integer", service.ErrInvalidInput))
+		return
+	}
+	assignments, err := s.Approve.ListApproved(r.Context(), service.HorizonParams{
+		StartDate: startDate,
+		NumDays:   numDays,
+	})
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, listApprovedResponseBody{Assignments: assignments})
 }
 
 func (s *Server) handleCapacityCheck(w http.ResponseWriter, r *http.Request) {

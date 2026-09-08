@@ -43,9 +43,15 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // parallel DTO structs are needed for the fields they cover.
 
 type solveRequestBody struct {
-	StartDate  domain.Date `json:"start_date"`
-	NumDays    int         `json:"num_days"`
-	TimeLimitS int         `json:"time_limit_s"`
+	StartDate      domain.Date `json:"start_date"`
+	NumDays        int         `json:"num_days"`
+	TimeLimitS     int         `json:"time_limit_s"`
+	IgnoreApproved bool        `json:"ignore_approved"`
+}
+
+type unapproveRequestBody struct {
+	StartDate domain.Date `json:"start_date"`
+	NumDays   int         `json:"num_days"`
 }
 
 type capacityCheckRequestBody struct {
@@ -111,4 +117,12 @@ type latestScheduleResponseBody struct {
 
 type approveResponseBody struct {
 	ApprovedCount int `json:"approved_count"`
+}
+
+type unapproveResponseBody struct {
+	UnapprovedCount int `json:"unapproved_count"`
+}
+
+type listApprovedResponseBody struct {
+	Assignments []domain.LockedAssignment `json:"assignments"`
 }

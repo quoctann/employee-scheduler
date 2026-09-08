@@ -60,7 +60,7 @@ export function CapacityCheckPanel() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="cap-employee-count">Số NV (để trống = dùng số hiện có)</Label>
+              <Label htmlFor="cap-employee-count">Số lượng nhân viên (để trống = dùng số hiện có)</Label>
               <Input
                 id="cap-employee-count"
                 type="number"
@@ -88,9 +88,9 @@ export function CapacityCheckPanel() {
           <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <Stat label="Giờ-người/ngày cần" value={result.demand_hours_per_day} />
             <Stat label="Tổng giờ-người cần" value={result.demand_hours_total} />
-            <Stat label="Giờ mục tiêu/NV" value={result.target_hours_per_employee} />
-            <Stat label="Số NV cần tối thiểu" value={result.min_employees_required.toFixed(2)} />
-            <Stat label="Số NV hiện có" value={result.employee_count} />
+            <Stat label="Giờ mục tiêu/nhân viên" value={result.target_hours_per_employee} />
+            <Stat label="Số nhân viên cần tối thiểu" value={result.min_employees_required.toFixed(2)} />
+            <Stat label="Số nhân viên hiện có" value={result.employee_count} />
             <Stat label="Tỷ lệ thiếu" value={`${(result.shortfall_ratio * 100).toFixed(1)}%`} />
           </CardContent>
         </Card>

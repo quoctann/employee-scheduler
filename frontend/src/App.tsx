@@ -17,7 +17,7 @@ function App() {
         <header>
           <h1 className="text-2xl font-semibold">Employee Scheduler — Demo</h1>
           <p className="text-sm text-muted-foreground">
-            Demo only
+            Disclaimer: dữ liệu và môi trường demo dùng để test, sử dụng như gợi ý và so sánh lập lịch, sản phẩm chưa production ready
           </p>
         </header>
 
@@ -28,7 +28,7 @@ function App() {
             <TabsTrigger value="capacity">Capacity Check</TabsTrigger>
             <TabsTrigger value="candidates">Đề xuất thay ca</TabsTrigger>
             <TabsTrigger value="employees">Quản lý nhân viên</TabsTrigger>
-            <TabsTrigger value="config">Cấu hình chốt &amp; trưởng ca</TabsTrigger>
+            <TabsTrigger value="config">Cấu hình cổng &amp; trưởng ca</TabsTrigger>
           </TabsList>
           {/* forceMount: keep every panel's local component state (mutation
               results in particular) alive across tab switches instead of

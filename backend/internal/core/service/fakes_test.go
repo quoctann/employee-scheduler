@@ -191,6 +191,11 @@ type fakeScheduleRepository struct {
 
 	approvedAssignments []domain.LockedAssignment
 	approvedErr         error
+
+	unapproveCount int
+	unapproveErr   error
+	unapproveFrom  domain.Date
+	unapproveTo    domain.Date
 }
 
 func (f *fakeScheduleRepository) SaveRun(_ context.Context, result domain.SolveResult) (int64, error) {
@@ -215,6 +220,12 @@ func (f *fakeScheduleRepository) ApproveAssignments(_ context.Context, assignmen
 
 func (f *fakeScheduleRepository) ApprovedAssignments(_ context.Context, _, _ domain.Date) ([]domain.LockedAssignment, error) {
 	return f.approvedAssignments, f.approvedErr
+}
+
+func (f *fakeScheduleRepository) UnapproveAssignments(_ context.Context, from, to domain.Date) (int, error) {
+	f.unapproveFrom = from
+	f.unapproveTo = to
+	return f.unapproveCount, f.unapproveErr
 }
 
 var (

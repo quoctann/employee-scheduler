@@ -69,3 +69,41 @@ func TestApproveService_Approve_RejectsMalformedAssignmentBeforeHittingRepositor
 		t.Fatalf("expected repository not to be called for an invalid assignment, got %+v", repo.approved)
 	}
 }
+
+func TestApproveService_Unapprove_DeletesHorizonAndReturnsCount(t *testing.T) {
+	repo := &fakeScheduleRepository{unapproveCount: 5}
+	svc := NewApproveService(repo)
+
+	count, err := svc.Unapprove(context.Background(), HorizonParams{StartDate: mustDate(t, "2026-09-07"), NumDays: 3})
+	if err != nil {
+		t.Fatalf("Unapprove() error = %v", err)
+	}
+	if count != 5 {
+		t.Fatalf("Unapprove() count = %d, want 5", count)
+	}
+	wantEnd := mustDate(t, "2026-09-09")
+	if repo.unapproveFrom != mustDate(t, "2026-09-07") || repo.unapproveTo != wantEnd {
+		t.Fatalf("expected horizon [2026-09-07,%v], got [%v,%v]", wantEnd, repo.unapproveFrom, repo.unapproveTo)
+	}
+}
+
+func TestApproveService_Unapprove_RejectsInvalidNumDays(t *testing.T) {
+	svc := NewApproveService(&fakeScheduleRepository{})
+	if _, err := svc.Unapprove(context.Background(), HorizonParams{StartDate: mustDate(t, "2026-09-07"), NumDays: 0}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestApproveService_ListApproved_ReturnsRepositoryResult(t *testing.T) {
+	locked := []domain.LockedAssignment{{EmployeeID: "NV01", Date: mustDate(t, "2026-09-07"), Off: true}}
+	repo := &fakeScheduleRepository{approvedAssignments: locked}
+	svc := NewApproveService(repo)
+
+	got, err := svc.ListApproved(context.Background(), HorizonParams{StartDate: mustDate(t, "2026-09-07"), NumDays: 1})
+	if err != nil {
+		t.Fatalf("ListApproved() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected repository's approved assignments to be returned, got %+v", got)
+	}
+}

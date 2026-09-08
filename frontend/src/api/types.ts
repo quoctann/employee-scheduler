@@ -114,6 +114,14 @@ export interface ApproveResponse {
   approved_count: number
 }
 
+export interface UnapproveResponse {
+  unapproved_count: number
+}
+
+export interface ListApprovedResponse {
+  assignments: LockedAssignment[]
+}
+
 export interface AckResponse {
   ok: boolean
 }

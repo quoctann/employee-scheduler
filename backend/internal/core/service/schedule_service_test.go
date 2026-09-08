@@ -87,6 +87,22 @@ func TestScheduleService_Solve_RejectsInvalidNumDays(t *testing.T) {
 	}
 }
 
+func TestScheduleService_Solve_IgnoreApproved_SkipsLockedAssignments(t *testing.T) {
+	start := mustDate(t, "2026-09-07")
+	locked := []domain.LockedAssignment{{EmployeeID: "NV01", Date: start, Off: true}}
+
+	solver := &fakeSolverGateway{}
+	schedRepo := &fakeScheduleRepository{approvedAssignments: locked}
+	svc := NewScheduleService(solver, &fakeEmployeeRepository{}, &fakeConfigRepository{}, schedRepo)
+
+	if _, err := svc.Solve(context.Background(), SolveParams{StartDate: start, NumDays: 1, IgnoreApproved: true}); err != nil {
+		t.Fatalf("Solve() error = %v", err)
+	}
+	if len(solver.solveReq.LockedAssignments) != 0 {
+		t.Fatalf("expected no locked assignments when IgnoreApproved=true, got %+v", solver.solveReq.LockedAssignments)
+	}
+}
+
 func TestScheduleService_Solve_PropagatesSolverError(t *testing.T) {
 	wantErr := errors.New("solver at capacity")
 	solver := &fakeSolverGateway{solveErr: wantErr}

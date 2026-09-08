@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { CircleCheckIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { RoleBadge } from '@/components/RoleBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { dateRange, formatShortDate } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import type { Employee, ScheduleEntry, ShiftHours, ShiftType } from '@/api/types'
+import type { Employee, Role, ScheduleEntry, ShiftHours, ShiftType } from '@/api/types'
 
 export interface CellAssignment {
   gate: string
@@ -35,10 +37,25 @@ export function resolveCell(
   return overrides.has(key) ? (overrides.get(key) ?? null) : original
 }
 
+/** Priority for what a cell's value is when there's no *live* override:
+ *  the server's approved state if this cell has one, else `fallback` (the
+ *  raw solver output). Shared by the grid's display and by ScheduleView's
+ *  approve-submission logic — they must agree on this, or re-approving a
+ *  cell with no current override (e.g. right after a page reload resets
+ *  `overrides`) would silently revert it to its pre-approval value instead
+ *  of re-confirming what's already approved. */
+export function resolveApprovedBaseline(
+  approvedAssignments: Map<string, CellAssignment | null>,
+  key: string,
+  fallback: CellAssignment | null,
+): CellAssignment | null {
+  return approvedAssignments.has(key) ? (approvedAssignments.get(key) ?? null) : fallback
+}
+
 interface ScheduleRow {
   employeeId: string
   name: string
-  role: string
+  role: Role
   cells: Record<string, CellAssignment>
 }
 
@@ -50,6 +67,17 @@ interface ScheduleTableProps {
   shiftHours: ShiftHours
   overrides: CellOverrides
   onEditCell: (employeeId: string, date: string, assignment: CellAssignment | null) => void
+  /** keys are `${employeeId}|${date}` (see `overrideKey`); value is `null` for
+   *  an approved "Off". This is the server-confirmed baseline a cell falls
+   *  back to once it's not in `overrides` anymore (e.g. after a page
+   *  reload) — without it, an approved manual edit would silently revert to
+   *  the original solver output once the in-memory override is gone. Also
+   *  drives the "approved" checkmark (any cell present here is approved). */
+  approvedAssignments: Map<string, CellAssignment | null>
+  /** dates (YYYY-MM-DD) that have at least one shortage somewhere in that
+   *  day's gates — shortages are per gate/shift/date, not per employee, so
+   *  this highlights the whole date column rather than a specific cell. */
+  shortageDates: Set<string>
 }
 
 const columnHelper = createColumnHelper<ScheduleRow>()
@@ -57,7 +85,17 @@ const columnHelper = createColumnHelper<ScheduleRow>()
 /** Pivot: rows = roster employees, columns = each date in the horizon, cell = "Gate-duration" or OFF.
  *  Every cell is click-to-edit: a manager can override the solver's assignment (different gate/shift,
  *  or Off), tracked in `overrides` and highlighted until the edited schedule is approved. */
-export function ScheduleTable({ employees, schedule, startDate, numDays, shiftHours, overrides, onEditCell }: ScheduleTableProps) {
+export function ScheduleTable({
+  employees,
+  schedule,
+  startDate,
+  numDays,
+  shiftHours,
+  overrides,
+  onEditCell,
+  approvedAssignments,
+  shortageDates,
+}: ScheduleTableProps) {
   const dates = useMemo(() => dateRange(startDate, numDays), [startDate, numDays])
 
   const rows = useMemo<ScheduleRow[]>(() => {
@@ -88,23 +126,34 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, shiftHo
         cell: (info) => (
           <div className="flex flex-col">
             <span className="font-medium">{info.getValue()}</span>
-            <span className="text-xs text-muted-foreground">{info.row.original.role}</span>
+            <RoleBadge role={info.row.original.role} className="text-xs text-muted-foreground" />
           </div>
         ),
       }),
       ...dates.map((date) =>
         columnHelper.display({
           id: date,
-          header: formatShortDate(date),
+          header: () => (
+            <span className={cn(shortageDates.has(date) && 'font-semibold text-destructive')}>
+              {formatShortDate(date)}
+            </span>
+          ),
           cell: (info) => {
             const employeeId = info.row.original.employeeId
+            const key = overrideKey(employeeId, date)
             const original = info.row.original.cells[date] ?? null
-            const effective = resolveCell(overrides, employeeId, date, original)
+            // approvedAssignments (server truth) wins over the raw solver
+            // output as the baseline `overrides` layers on top of — see the
+            // prop doc above for why (an approved edit must survive
+            // `overrides` being wiped, e.g. by a page reload).
+            const baseline = resolveApprovedBaseline(approvedAssignments, key, original)
+            const effective = resolveCell(overrides, employeeId, date, baseline)
             return (
               <EditableCell
                 value={effective}
                 shiftHours={shiftHours}
-                edited={overrides.has(overrideKey(employeeId, date))}
+                edited={overrides.has(key)}
+                approved={approvedAssignments.has(key)}
                 onSave={(assignment) => onEditCell(employeeId, date, assignment)}
               />
             )
@@ -112,7 +161,7 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, shiftHo
         }),
       ),
     ],
-    [dates, overrides, onEditCell, shiftHours],
+    [dates, overrides, onEditCell, shiftHours, approvedAssignments, shortageDates],
   )
 
   const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() })
@@ -123,7 +172,12 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, shiftHo
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
             {headerGroup.headers.map((header) => (
-              <TableHead key={header.id}>{flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
+              <TableHead
+                key={header.id}
+                className={cn(shortageDates.has(header.id) && 'border-b-2 border-destructive bg-destructive/5')}
+              >
+                {flexRender(header.column.columnDef.header, header.getContext())}
+              </TableHead>
             ))}
           </TableRow>
         ))}
@@ -153,11 +207,13 @@ function EditableCell({
   value,
   shiftHours,
   edited,
+  approved,
   onSave,
 }: {
   value: CellAssignment | null
   shiftHours: ShiftHours
   edited: boolean
+  approved: boolean
   onSave: (assignment: CellAssignment | null) => void
 }) {
   const gates = Object.keys(shiftHours).sort()
@@ -201,9 +257,12 @@ function EditableCell({
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={value ? `${value.gate}, ca ${value.shift === 'dem' ? 'đêm' : 'sáng'}, ${hours ?? 'chưa có'} giờ` : 'Off'}
+          aria-label={
+            (value ? `${value.gate}, ca ${value.shift === 'dem' ? 'đêm' : 'sáng'}, ${hours ?? 'chưa có'} giờ` : 'Off') +
+            (approved && !edited ? ', đã duyệt' : '')
+          }
           className={cn(
-            'rounded-md ring-offset-1 transition-shadow hover:shadow-sm',
+            'relative rounded-md ring-offset-1 transition-shadow hover:shadow-sm',
             edited && 'ring-2 ring-status-edited ring-offset-background',
           )}
         >
@@ -220,6 +279,12 @@ function EditableCell({
             </Badge>
           ) : (
             <span className="px-1 text-xs text-muted-foreground">OFF</span>
+          )}
+          {/* Suppressed while `edited`: a staged-but-unsaved edit is about to
+              override whatever was approved, so showing both at once would
+              claim a confirmed state that's no longer true. */}
+          {approved && !edited && (
+            <CircleCheckIcon className="absolute -top-1.5 -right-1.5 size-3.5 rounded-full bg-background text-status-approved" />
           )}
         </button>
       </PopoverTrigger>

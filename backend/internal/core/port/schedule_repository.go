@@ -29,4 +29,8 @@ type ScheduleRepository interface {
 	// ApprovedAssignments returns the currently-approved cells in [from, to],
 	// used to populate LockedAssignments on the next solve for that horizon.
 	ApprovedAssignments(ctx context.Context, from, to domain.Date) ([]domain.LockedAssignment, error)
+
+	// UnapproveAssignments deletes approved cells in [from, to] so a future
+	// solve is free to reassign them, and returns how many rows were removed.
+	UnapproveAssignments(ctx context.Context, from, to domain.Date) (int, error)
 }

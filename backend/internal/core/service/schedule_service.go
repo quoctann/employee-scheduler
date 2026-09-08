@@ -22,9 +22,10 @@ func NewScheduleService(solver port.SolverGateway, employees port.EmployeeReposi
 }
 
 type SolveParams struct {
-	StartDate  domain.Date
-	NumDays    int
-	TimeLimitS int
+	StartDate      domain.Date
+	NumDays        int
+	TimeLimitS     int
+	IgnoreApproved bool
 }
 
 // Solve builds a SolveRequest from the current roster, availability,
@@ -52,11 +53,18 @@ func (s *ScheduleService) Solve(ctx context.Context, params SolveParams) (domain
 		return domain.SolveResult{}, fmt.Errorf("load solver config: %w", err)
 	}
 
-	locked, err := s.Schedules.ApprovedAssignments(ctx, params.StartDate, endDate)
-	if err != nil {
-		return domain.SolveResult{}, fmt.Errorf("load approved assignments: %w", err)
+	// IgnoreApproved lets a manager preview a full re-optimization for this
+	// one run without touching approved_assignments: nothing is pinned, but
+	// the DB's approved state is left as-is (re-Approve still overwrites it
+	// with whatever this run produced).
+	var locked []domain.LockedAssignment
+	if !params.IgnoreApproved {
+		locked, err = s.Schedules.ApprovedAssignments(ctx, params.StartDate, endDate)
+		if err != nil {
+			return domain.SolveResult{}, fmt.Errorf("load approved assignments: %w", err)
+		}
+		locked = sanitizeLockedAssignments(locked, employees, availability)
 	}
-	locked = sanitizeLockedAssignments(locked, employees, availability)
 
 	carryIn, err := s.Schedules.CarryIn(ctx, params.StartDate.AddDays(-1))
 	if err != nil {

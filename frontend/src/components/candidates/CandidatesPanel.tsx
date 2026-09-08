@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { RoleBadge } from '@/components/RoleBadge'
 import { useCandidates, useConfig } from '@/api/hooks'
 import { errorMessage } from '@/lib/errors'
 import { todayISO } from '@/lib/dates'
@@ -132,7 +133,7 @@ export function CandidatesPanel() {
                   {result.candidates.map((c) => (
                     <TableRow key={c.employee_id}>
                       <TableCell className="font-medium">{c.employee_id}</TableCell>
-                      <TableCell>{c.role}</TableCell>
+                      <TableCell><RoleBadge role={c.role} /></TableCell>
                       <TableCell className="text-right">{c.score.toFixed(2)}</TableCell>
                       <TableCell className="text-right">{c.deviation_hours}</TableCell>
                       <TableCell>

@@ -6,6 +6,7 @@ import type {
   EmployeesResponse,
   GateShiftRequirement,
   LatestScheduleResponse,
+  ListApprovedResponse,
   LockedAssignment,
   Employee,
   ReplacementCandidatesResult,
@@ -14,6 +15,7 @@ import type {
   Role,
   SolverConfig,
   TargetSlot,
+  UnapproveResponse,
 } from './types'
 
 export function fetchEmployees(includeInactive = false, from?: string, to?: string) {
@@ -76,6 +78,7 @@ export interface SolveParams {
   start_date: string
   num_days: number
   time_limit_s?: number
+  ignore_approved?: boolean
 }
 
 export function solveSchedule(params: SolveParams) {
@@ -84,6 +87,20 @@ export function solveSchedule(params: SolveParams) {
 
 export function approveAssignments(assignments: LockedAssignment[]) {
   return postJSON<ApproveResponse>('/api/v1/schedule/approve', { assignments })
+}
+
+export interface UnapproveParams {
+  start_date: string
+  num_days: number
+}
+
+export function unapproveAssignments(params: UnapproveParams) {
+  return postJSON<UnapproveResponse>('/api/v1/schedule/unapprove', params)
+}
+
+export function fetchApprovedAssignments(startDate: string, numDays: number) {
+  const params = new URLSearchParams({ start_date: startDate, num_days: String(numDays) })
+  return getJSON<ListApprovedResponse>(`/api/v1/schedule/approved?${params.toString()}`)
 }
 
 export interface CapacityCheckParams {

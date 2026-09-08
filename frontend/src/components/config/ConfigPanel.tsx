@@ -76,7 +76,7 @@ export function ConfigPanel() {
       },
       {
         onSuccess: () => {
-          toast.success(`Đã cập nhật cấu hình chốt ${editing.gate} - ca ${shiftLabel[editing.shift]}`)
+          toast.success(`Đã cập nhật cấu hình cổng ${editing.gate} - ca ${shiftLabel[editing.shift]}`)
           setEditing(null)
         },
         onError: (error) => toast.error(errorMessage(error)),
@@ -92,9 +92,51 @@ export function ConfigPanel() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Cấu hình chốt &amp; trưởng ca</CardTitle>
+          <CardTitle>Đổi tên cổng</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Với mỗi chốt và ca trực, hệ thống xếp lịch cần biết cần bao nhiêu nhân viên (NV) và bao nhiêu
+            Mã cổng mới sẽ áp dụng cho toàn bộ cấu hình, lịch đã duyệt và lịch sử xếp lịch của cổng này.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {configQuery.isLoading && <p className="text-sm text-muted-foreground">Đang tải cấu hình...</p>}
+          {configQuery.isError && <p className="text-sm text-destructive">Không tải được cấu hình: {errorMessage(configQuery.error)}</p>}
+          {config && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cổng</TableHead>
+                  <TableHead className="text-right">Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gates.map((gate) => (
+                  <TableRow key={gate}>
+                    <TableCell className="font-medium">
+                      {gate}
+                      {leadGates.has(gate) && (
+                        <Badge variant="outline" className="ml-2">
+                          Cổng cần trưởng ca
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button type="button" size="sm" variant="outline" onClick={() => openRename(gate)}>
+                        Đổi tên
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cấu hình cổng &amp; trưởng ca</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Với mỗi cổng và ca trực, hệ thống xếp lịch cần biết cần bao nhiêu nhân viên (NV) và bao nhiêu
             trưởng ca (Lead), và liệu vị trí trưởng ca đó có bắt buộc phải do nhân viên vai trò Tổ trưởng
             (TC) đảm nhiệm hay không. Sửa các giá trị bên dưới để thay đổi yêu cầu nhân sự cho lần xếp lịch
             (Solve) tiếp theo — dùng để demo/test cấu hình trước khi áp dụng cho lịch thật.
@@ -109,8 +151,8 @@ export function ConfigPanel() {
                 <TableRow>
                   <TableHead>Cổng</TableHead>
                   <TableHead>Ca</TableHead>
-                  <TableHead className="text-right">Số NV</TableHead>
-                  <TableHead className="text-right">Số trưởng ca (Lead)</TableHead>
+                  <TableHead className="text-right">Số nhân viên (NV)</TableHead>
+                  <TableHead className="text-right">Số trưởng ca (TC)</TableHead>
                   <TableHead>Bắt buộc vai trò TC</TableHead>
                   <TableHead className="text-right">Giờ/ca</TableHead>
                   <TableHead className="text-right">Thao tác</TableHead>
@@ -129,23 +171,8 @@ export function ConfigPanel() {
                           {gate}
                           {leadGates.has(gate) && (
                             <Badge variant="outline" className="ml-2">
-                              Chốt cần trưởng ca
+                              Cổng cần trưởng ca
                             </Badge>
-                          )}
-                          {/* Renaming applies to the gate, not a single
-                              shift row — only show the button once, on the
-                              first row for this gate, to avoid repeating it
-                              per shift. */}
-                          {shift === shiftsForGate[0] && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="ml-2 h-6 px-2 text-xs"
-                              onClick={() => openRename(gate)}
-                            >
-                              Đổi tên
-                            </Button>
                           )}
                         </TableCell>
                         <TableCell>{shiftLabel[shift]}</TableCell>
@@ -178,7 +205,7 @@ export function ConfigPanel() {
             <form onSubmit={handleSave} className="grid gap-4">
               <DialogHeader>
                 <DialogTitle>
-                  Sửa yêu cầu chốt {editing.gate} - ca {shiftLabel[editing.shift]}
+                  Sửa yêu cầu cổng {editing.gate} - ca {shiftLabel[editing.shift]}
                 </DialogTitle>
                 <DialogDescription>
                   Số NV và số trưởng ca là số lượng tối thiểu cần xếp cho ca này. Bật &quot;Bắt buộc vai trò TC&quot;

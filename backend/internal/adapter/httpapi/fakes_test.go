@@ -134,10 +134,11 @@ func (f *fakeConfigRepository) RenameGate(_ context.Context, oldCode, newCode st
 }
 
 type fakeScheduleRepository struct {
-	saveRunID    int64
-	latestResult domain.SolveResult
-	latestFound  bool
-	approveCount int
+	saveRunID      int64
+	latestResult   domain.SolveResult
+	latestFound    bool
+	approveCount   int
+	unapproveCount int
 }
 
 func (f *fakeScheduleRepository) SaveRun(context.Context, domain.SolveResult) (int64, error) {
@@ -154,6 +155,9 @@ func (f *fakeScheduleRepository) ApproveAssignments(context.Context, []domain.Lo
 }
 func (f *fakeScheduleRepository) ApprovedAssignments(context.Context, domain.Date, domain.Date) ([]domain.LockedAssignment, error) {
 	return nil, nil
+}
+func (f *fakeScheduleRepository) UnapproveAssignments(context.Context, domain.Date, domain.Date) (int, error) {
+	return f.unapproveCount, nil
 }
 
 var (

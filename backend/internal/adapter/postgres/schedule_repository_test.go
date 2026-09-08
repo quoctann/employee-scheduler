@@ -111,6 +111,42 @@ func TestScheduleRepository_ApproveAssignments_FeedsApprovedAssignmentsAndCarryI
 	}
 }
 
+func TestScheduleRepository_UnapproveAssignments_RemovesApprovedCells(t *testing.T) {
+	pool := testPool(t)
+	repo := NewScheduleRepository(pool)
+	ctx := context.Background()
+
+	date := currentDateForTest()
+
+	t.Cleanup(func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM approved_assignments WHERE employee_id = 'NV03' AND assignment_date = $1`, date.Time); err != nil {
+			t.Logf("cleanup approved_assignments failed: %v", err)
+		}
+	})
+
+	if _, err := repo.ApproveAssignments(ctx, []domain.LockedAssignment{
+		{EmployeeID: "NV03", Date: date, Off: true},
+	}); err != nil {
+		t.Fatalf("ApproveAssignments() error = %v", err)
+	}
+
+	count, err := repo.UnapproveAssignments(ctx, date, date)
+	if err != nil {
+		t.Fatalf("UnapproveAssignments() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("UnapproveAssignments() count = %d, want 1", count)
+	}
+
+	approved, err := repo.ApprovedAssignments(ctx, date, date)
+	if err != nil {
+		t.Fatalf("ApprovedAssignments() error = %v", err)
+	}
+	if len(approved) != 0 {
+		t.Fatalf("expected no approved assignments after Unapprove, got %+v", approved)
+	}
+}
+
 // Regression test: a run with zero shortages must round-trip as an empty
 // JSON array, not `null` — GET /schedule/latest and POST /schedule/solve
 // must agree on this shape for the same logical field.

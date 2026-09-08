@@ -333,3 +333,16 @@ func (r *ScheduleRepository) ApprovedAssignments(ctx context.Context, from, to d
 	}
 	return result, nil
 }
+
+// UnapproveAssignments deletes approved cells in [from, to] so a future
+// solve is free to reassign them, and returns how many rows were removed.
+func (r *ScheduleRepository) UnapproveAssignments(ctx context.Context, from, to domain.Date) (int, error) {
+	tag, err := r.pool.Exec(ctx, `
+		DELETE FROM approved_assignments
+		WHERE assignment_date BETWEEN $1 AND $2
+	`, from.Time, to.Time)
+	if err != nil {
+		return 0, fmt.Errorf("delete approved_assignments: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}

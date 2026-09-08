@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { RoleBadge } from '@/components/RoleBadge'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -46,7 +47,7 @@ export function RegistrationTable({ employees, availability, days, pendingKeys, 
             <div className="flex flex-col">
               <span className="font-medium">{employee.name}</span>
               <span className="text-xs text-muted-foreground">
-                {employee.employee_id} · {employee.role}
+                {employee.employee_id} · <RoleBadge role={employee.role} />
               </span>
             </div>
           )

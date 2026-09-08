@@ -1,3 +1,4 @@
+import { RoleBadge } from '@/components/RoleBadge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { EmployeeSummary } from '@/api/types'
 
@@ -20,7 +21,7 @@ export function EmployeeSummaryTable({ summary }: { summary: EmployeeSummary[] }
         {sorted.map((s) => (
           <TableRow key={s.employee_id}>
             <TableCell className="font-medium">{s.employee_id}</TableCell>
-            <TableCell>{s.role}</TableCell>
+            <TableCell><RoleBadge role={s.role} /></TableCell>
             <TableCell className="text-right">{s.target_hours}</TableCell>
             <TableCell className="text-right">{s.actual_hours}</TableCell>
             <TableCell className={`text-right ${s.deviation_hours < 0 ? 'text-destructive' : ''}`}>

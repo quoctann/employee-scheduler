@@ -10,6 +10,7 @@ import {
 } from '@/api/hooks'
 import type { Employee, Role } from '@/api/types'
 import { errorMessage } from '@/lib/errors'
+import { RoleBadge } from '@/components/RoleBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -116,7 +117,7 @@ export function EmployeesPanel() {
                   <TableRow key={employee.employee_id} className={!employee.active ? 'opacity-60' : undefined}>
                     <TableCell className="font-medium">{employee.employee_id}</TableCell>
                     <TableCell>{employee.name}</TableCell>
-                    <TableCell>{employee.role}</TableCell>
+                    <TableCell><RoleBadge role={employee.role} /></TableCell>
                     <TableCell>
                       <Badge variant={employee.active ? 'outline' : 'secondary'}>{employee.active ? 'Đang hoạt động' : 'Đã ngưng'}</Badge>
                     </TableCell>

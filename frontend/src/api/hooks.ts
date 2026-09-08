@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from './endpoints'
-import type { SetAvailabilityParams, SetLeaveDayParams, UpdateGateShiftRequirementParams } from './endpoints'
+import type { SetAvailabilityParams, SetLeaveDayParams, UnapproveParams, UpdateGateShiftRequirementParams } from './endpoints'
 import type { LockedAssignment, ShiftType, SolverConfig } from './types'
 import type { CreateEmployeeParams, UpdateEmployeeParams } from './endpoints'
 
@@ -60,8 +60,28 @@ export function useSolve() {
 }
 
 export function useApprove() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (assignments: LockedAssignment[]) => api.approveAssignments(assignments),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedule', 'approved'] }),
+  })
+}
+
+export function useUnapprove() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: UnapproveParams) => api.unapproveAssignments(params),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedule', 'approved'] }),
+  })
+}
+
+// startDate/numDays come from the currently displayed solve result, so this
+// naturally stays disabled (no query) until a result exists.
+export function useApprovedAssignments(startDate: string, numDays: number) {
+  return useQuery({
+    queryKey: ['schedule', 'approved', startDate, numDays],
+    queryFn: () => api.fetchApprovedAssignments(startDate, numDays),
+    enabled: Boolean(startDate) && numDays > 0,
   })
 }
 
