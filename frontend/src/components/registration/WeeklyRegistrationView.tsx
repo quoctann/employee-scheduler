@@ -11,17 +11,21 @@ import { RegistrationTable } from './RegistrationTable'
 import { cellKey, STATUS_META, type DayStatus } from './registrationStatus'
 
 export function WeeklyRegistrationView() {
-  const employeesQuery = useEmployees()
-  const setAvailability = useSetAvailability()
-  const setLeaveDay = useSetLeaveDay()
-
   const [weekStart, setWeekStart] = useState(() => startOfWeek(todayISO()))
   const [search, setSearch] = useState('')
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set())
 
+  const days = useMemo(() => dateRange(weekStart, 7), [weekStart])
+  // Scope the fetch to the visible week, not the backend's today-anchored
+  // default — otherwise days before today (e.g. Monday of the current week
+  // when today isn't Monday) or any past week would never show what was
+  // just written.
+  const employeesQuery = useEmployees(days[0], days[6])
+  const setAvailability = useSetAvailability()
+  const setLeaveDay = useSetLeaveDay()
+
   const employees = employeesQuery.data?.employees ?? []
   const availability = employeesQuery.data?.availability ?? {}
-  const days = useMemo(() => dateRange(weekStart, 7), [weekStart])
 
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase()

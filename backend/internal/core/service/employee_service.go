@@ -29,17 +29,26 @@ func NewEmployeeService(employees port.EmployeeRepository) *EmployeeService {
 	return &EmployeeService{Employees: employees}
 }
 
-// Roster returns the full employee list plus their availability over the
-// next `defaultRosterWindowDays` days (matching the default demo horizon),
-// for the UI to show before anyone triggers a solve.
-func (s *EmployeeService) Roster(ctx context.Context, includeInactive bool) ([]domain.Employee, domain.AvailabilityMap, error) {
+// Roster returns the full employee list plus their availability for [from, to].
+// A zero-value from/to defaults to the next `defaultRosterWindowDays` days
+// starting today (matching the default demo horizon), for the UI to show
+// before anyone triggers a solve. Callers that need a different window (e.g.
+// a registration UI browsing past or future weeks) pass explicit dates —
+// otherwise a write to any day outside the default window would succeed but
+// never come back on the next GET.
+func (s *EmployeeService) Roster(ctx context.Context, includeInactive bool, from, to domain.Date) ([]domain.Employee, domain.AvailabilityMap, error) {
 	employees, err := s.Employees.List(ctx, includeInactive)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list employees: %w", err)
 	}
 
-	today := domain.Today()
-	availability, err := s.Employees.Availability(ctx, today, today.AddDays(defaultRosterWindowDays-1))
+	if from.Time.IsZero() {
+		from = domain.Today()
+	}
+	if to.Time.IsZero() {
+		to = domain.Today().AddDays(defaultRosterWindowDays - 1)
+	}
+	availability, err := s.Employees.Availability(ctx, from, to)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load availability: %w", err)
 	}

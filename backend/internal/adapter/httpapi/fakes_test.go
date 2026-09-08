@@ -31,6 +31,8 @@ func (f *fakeSolverGateway) ReplacementCandidates(context.Context, port.Replacem
 type fakeEmployeeRepository struct {
 	employees          []domain.Employee
 	availability       domain.AvailabilityMap
+	availabilityFrom   domain.Date
+	availabilityTo     domain.Date
 	includeInactive    bool
 	listErr            error
 	setAvailabilityErr error
@@ -65,7 +67,9 @@ func (f *fakeEmployeeRepository) SetActive(_ context.Context, employeeID string,
 	}
 	return f.setActiveResult, f.setActiveErr
 }
-func (f *fakeEmployeeRepository) Availability(context.Context, domain.Date, domain.Date) (domain.AvailabilityMap, error) {
+func (f *fakeEmployeeRepository) Availability(_ context.Context, from, to domain.Date) (domain.AvailabilityMap, error) {
+	f.availabilityFrom = from
+	f.availabilityTo = to
 	return f.availability, nil
 }
 

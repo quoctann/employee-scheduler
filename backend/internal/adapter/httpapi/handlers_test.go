@@ -98,6 +98,50 @@ func TestHandleGetEmployees_ReturnsRosterFromRepository(t *testing.T) {
 	}
 }
 
+func TestHandleGetEmployees_FromTo_OverridesDefaultWindow(t *testing.T) {
+	empRepo := &fakeEmployeeRepository{
+		employees: []domain.Employee{{EmployeeID: "NV01", Name: "NV01", Role: domain.RoleNV}},
+	}
+	router := newTestServer(t, nil, empRepo, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/employees?from=2026-01-01&to=2026-01-07", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	wantFrom, _ := domain.ParseDate("2026-01-01")
+	wantTo, _ := domain.ParseDate("2026-01-07")
+	if empRepo.availabilityFrom != wantFrom || empRepo.availabilityTo != wantTo {
+		t.Fatalf("requested window = [%v,%v], want [%v,%v]", empRepo.availabilityFrom, empRepo.availabilityTo, wantFrom, wantTo)
+	}
+}
+
+func TestHandleGetEmployees_InvalidFrom_Returns400(t *testing.T) {
+	router := newTestServer(t, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/employees?from=not-a-date", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleGetEmployees_ToBeforeFrom_Returns400(t *testing.T) {
+	router := newTestServer(t, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/employees?from=2026-01-07&to=2026-01-01", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleSolve_HappyPath_PersistsAndReturnsResult(t *testing.T) {
 	solver := &fakeSolverGateway{solveResult: domain.SolveResult{Status: domain.StatusOptimal}}
 	schedRepo := &fakeScheduleRepository{saveRunID: 7}

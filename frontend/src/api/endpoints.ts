@@ -16,9 +16,13 @@ import type {
   TargetSlot,
 } from './types'
 
-export function fetchEmployees(includeInactive = false) {
-  const query = includeInactive ? '?include_inactive=true' : ''
-  return getJSON<EmployeesResponse>(`/api/v1/employees${query}`)
+export function fetchEmployees(includeInactive = false, from?: string, to?: string) {
+  const params = new URLSearchParams()
+  if (includeInactive) params.set('include_inactive', 'true')
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  const query = params.toString()
+  return getJSON<EmployeesResponse>(`/api/v1/employees${query ? `?${query}` : ''}`)
 }
 
 export function fetchConfig() {

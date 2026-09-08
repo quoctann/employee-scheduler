@@ -4,8 +4,16 @@ import type { SetAvailabilityParams, SetLeaveDayParams, UpdateGateShiftRequireme
 import type { LockedAssignment, ShiftType, SolverConfig } from './types'
 import type { CreateEmployeeParams, UpdateEmployeeParams } from './endpoints'
 
-export function useEmployees() {
-  return useQuery({ queryKey: ['employees'], queryFn: () => api.fetchEmployees() })
+// `from`/`to` (YYYY-MM-DD) scope the availability window to whatever the
+// caller is actually displaying — without them the backend defaults to
+// [today, today+27], so a registration view browsing a week that starts
+// before today (e.g. the current week when today isn't Monday) or a past
+// week would write successfully but never see the write reflected back.
+export function useEmployees(from?: string, to?: string) {
+  return useQuery({
+    queryKey: ['employees', from ?? null, to ?? null],
+    queryFn: () => api.fetchEmployees(false, from, to),
+  })
 }
 
 export function useAllEmployees() {

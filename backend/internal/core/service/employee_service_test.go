@@ -17,7 +17,7 @@ func TestEmployeeService_Roster_ReturnsEmployeesAndAvailability(t *testing.T) {
 	}
 	svc := NewEmployeeService(repo)
 
-	employees, availability, err := svc.Roster(context.Background(), false)
+	employees, availability, err := svc.Roster(context.Background(), false, domain.Date{}, domain.Date{})
 	if err != nil {
 		t.Fatalf("Roster() error = %v", err)
 	}
@@ -28,7 +28,29 @@ func TestEmployeeService_Roster_ReturnsEmployeesAndAvailability(t *testing.T) {
 		t.Fatal("Roster() availability = nil")
 	}
 	if repo.availabilityTo.Time.Sub(repo.availabilityFrom.Time).Hours() < 27*24 {
-		t.Fatalf("expected roster window to span >= 28 days, got [%v,%v]", repo.availabilityFrom, repo.availabilityTo)
+		t.Fatalf("expected default roster window to span >= 28 days, got [%v,%v]", repo.availabilityFrom, repo.availabilityTo)
+	}
+}
+
+func TestEmployeeService_Roster_ExplicitWindow_OverridesDefault(t *testing.T) {
+	repo := &fakeEmployeeRepository{
+		employees:    []domain.Employee{{EmployeeID: "NV01", Name: "NV01", Role: domain.RoleNV}},
+		availability: domain.AvailabilityMap{"NV01": {}},
+	}
+	svc := NewEmployeeService(repo)
+	from, _ := domain.ParseDate("2026-01-01")
+	to, _ := domain.ParseDate("2026-01-07")
+
+	_, _, err := svc.Roster(context.Background(), false, from, to)
+	if err != nil {
+		t.Fatalf("Roster() error = %v", err)
+	}
+	// A registration UI browsing a week entirely in the past (or far in the
+	// future) must get back exactly that window, not the today-anchored
+	// default — otherwise a write there would never be reflected on the
+	// next read, even after a hard refresh.
+	if repo.availabilityFrom != from || repo.availabilityTo != to {
+		t.Fatalf("Roster() requested window = [%v,%v], want [%v,%v]", repo.availabilityFrom, repo.availabilityTo, from, to)
 	}
 }
 

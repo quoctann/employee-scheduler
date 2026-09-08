@@ -31,7 +31,21 @@ func (s *Server) handleGetEmployees(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
-	employees, availability, err := s.Employees.Roster(r.Context(), includeInactive)
+	from, err := parseOptionalDate(r, "from")
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	to, err := parseOptionalDate(r, "to")
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	if !from.Time.IsZero() && !to.Time.IsZero() && to.Time.Before(from.Time) {
+		handleError(w, fmt.Errorf("%w: to must not be before from", service.ErrInvalidInput))
+		return
+	}
+	employees, availability, err := s.Employees.Roster(r.Context(), includeInactive, from, to)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -138,6 +152,20 @@ func parseIncludeInactive(r *http.Request) (bool, error) {
 		return false, fmt.Errorf("%w: include_inactive must be true or false", service.ErrInvalidInput)
 	}
 	return includeInactive, nil
+}
+
+// parseOptionalDate reads a "YYYY-MM-DD" query param, returning the zero
+// Date (meaning "use the caller's default") when absent.
+func parseOptionalDate(r *http.Request, name string) (domain.Date, error) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return domain.Date{}, nil
+	}
+	date, err := domain.ParseDate(raw)
+	if err != nil {
+		return domain.Date{}, fmt.Errorf("%w: %s must be a YYYY-MM-DD date", service.ErrInvalidInput, name)
+	}
+	return date, nil
 }
 
 func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
