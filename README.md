@@ -71,9 +71,16 @@ make migrate-install  # one-time: installs the `migrate` CLI (needs Go)
 DATABASE_URL='postgres://postgres:<encoded-password>@localhost:5432/employee_scheduler?sslmode=disable' make migrate-up
 ```
 
-`migrate-up` applies the schema (`backend/migrations/0001_*`) and seeds a
-realistic demo dataset — 21 employees, gates A/B/G/D, a 28-day availability
-window anchored to whatever day you run it (`backend/migrations/0002_*`).
+`migrate-up` applies only the schema. Demo data is intentionally separate from
+automatic migrations so production deployments start empty. To initialize a
+development database once, run:
+
+```bash
+psql "$DATABASE_URL" -f backend/seeds/demo.sql
+```
+
+The optional dataset contains 21 employees, gates A/B/G/D, and a 28-day
+availability window anchored to the day it is applied.
 
 ### 3. Frontend dependencies
 

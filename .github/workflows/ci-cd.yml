@@ -1,0 +1,114 @@
+name: CI and publish
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: employee-scheduler-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.6
+      - run: go test ./...
+
+  solver:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solver-service
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --all-groups
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - run: uv run pytest --cov=src --cov-report=term-missing
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  publish:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [backend, solver, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: frontend
+            context: frontend
+            image: employee-scheduler-frontend
+          - name: backend
+            context: backend
+            image: employee-scheduler-backend
+          - name: solver
+            context: solver-service
+            image: employee-scheduler-solver
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Make GHCR package public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE: ${{ matrix.image }}
+        run: gh api --method PATCH "user/packages/container/$PACKAGE" -f visibility=public
+
+  update-gitops:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deployment update
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_DISPATCH_PAT }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: >-
+          gh api --method POST
+          repos/quoctann/pisces-infra/actions/workflows/deploy-employee-scheduler.yml/dispatches
+          -f ref=main
+          -f "inputs[image_tag]=$IMAGE_TAG"
