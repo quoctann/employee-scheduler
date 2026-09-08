@@ -84,6 +84,13 @@ type updateEmployeeRequestBody struct {
 	Role domain.Role `json:"role"`
 }
 
+type updateGateShiftRequirementRequestBody struct {
+	NV                int  `json:"nv"`
+	Lead              int  `json:"lead"`
+	LeadMandatoryRole bool `json:"lead_mandatory_role"`
+	ShiftHours        int  `json:"shift_hours"`
+}
+
 type ackResponseBody struct {
 	OK bool `json:"ok"`
 }

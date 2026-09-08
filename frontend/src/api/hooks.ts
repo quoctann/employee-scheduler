@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from './endpoints'
-import type { SetAvailabilityParams, SetLeaveDayParams } from './endpoints'
-import type { LockedAssignment } from './types'
+import type { SetAvailabilityParams, SetLeaveDayParams, UpdateGateShiftRequirementParams } from './endpoints'
+import type { LockedAssignment, ShiftType, SolverConfig } from './types'
 import type { CreateEmployeeParams, UpdateEmployeeParams } from './endpoints'
 
 export function useEmployees() {
@@ -14,6 +14,17 @@ export function useAllEmployees() {
 
 export function useConfig() {
   return useQuery({ queryKey: ['config'], queryFn: api.fetchConfig })
+}
+
+export function useUpdateGateShiftRequirement() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ gateCode, shiftType, params }: { gateCode: string; shiftType: ShiftType; params: UpdateGateShiftRequirementParams }) =>
+      api.updateGateShiftRequirement(gateCode, shiftType, params),
+    onSuccess: (config: SolverConfig) => {
+      queryClient.setQueryData(['config'], config)
+    },
+  })
 }
 
 export function useLatestSchedule() {

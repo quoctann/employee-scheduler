@@ -94,3 +94,21 @@ func (r *ConfigRepository) Get(ctx context.Context) (domain.SolverConfig, error)
 
 	return config, nil
 }
+
+// UpdateGateShiftRequirement updates one (gate, shift) staffing row.
+// ErrGateShiftNotFound if the pair doesn't already exist — this endpoint
+// edits seeded config, it does not create new gates or shift types.
+func (r *ConfigRepository) UpdateGateShiftRequirement(ctx context.Context, gateCode string, shiftType domain.ShiftType, requirement domain.GateShiftRequirement, shiftHours int) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE gate_shift_requirements
+		SET nv = $3, lead = $4, lead_mandatory_role = $5, shift_hours = $6
+		WHERE gate_code = $1 AND shift_type = $2
+	`, gateCode, shiftType, requirement.NV, requirement.Lead, requirement.LeadMandatoryRole, shiftHours)
+	if err != nil {
+		return fmt.Errorf("update gate_shift_requirement: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return port.ErrGateShiftNotFound
+	}
+	return nil
+}

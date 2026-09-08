@@ -108,10 +108,41 @@ func (f *fakeEmployeeRepository) SetLeaveDay(_ context.Context, _ string, _ doma
 type fakeConfigRepository struct {
 	config domain.SolverConfig
 	err    error
+
+	updateErr      error
+	lastUpdateGate string
+	lastUpdateType domain.ShiftType
+	lastUpdateReq  domain.GateShiftRequirement
+	lastUpdateHrs  int
 }
 
 func (f *fakeConfigRepository) Get(_ context.Context) (domain.SolverConfig, error) {
 	return f.config, f.err
+}
+
+func (f *fakeConfigRepository) UpdateGateShiftRequirement(_ context.Context, gateCode string, shiftType domain.ShiftType, requirement domain.GateShiftRequirement, shiftHours int) error {
+	f.lastUpdateGate = gateCode
+	f.lastUpdateType = shiftType
+	f.lastUpdateReq = requirement
+	f.lastUpdateHrs = shiftHours
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	if f.config.Requirements == nil {
+		f.config.Requirements = map[string]map[domain.ShiftType]domain.GateShiftRequirement{}
+	}
+	if f.config.Requirements[gateCode] == nil {
+		f.config.Requirements[gateCode] = map[domain.ShiftType]domain.GateShiftRequirement{}
+	}
+	f.config.Requirements[gateCode][shiftType] = requirement
+	if f.config.ShiftHours == nil {
+		f.config.ShiftHours = map[string]map[domain.ShiftType]int{}
+	}
+	if f.config.ShiftHours[gateCode] == nil {
+		f.config.ShiftHours[gateCode] = map[domain.ShiftType]int{}
+	}
+	f.config.ShiftHours[gateCode][shiftType] = shiftHours
+	return nil
 }
 
 type fakeScheduleRepository struct {

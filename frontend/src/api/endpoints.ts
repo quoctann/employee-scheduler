@@ -4,10 +4,12 @@ import type {
   ApproveResponse,
   CapacityCheckResult,
   EmployeesResponse,
+  GateShiftRequirement,
   LatestScheduleResponse,
   LockedAssignment,
   Employee,
   ReplacementCandidatesResult,
+  ShiftType,
   SolveResult,
   Role,
   SolverConfig,
@@ -21,6 +23,14 @@ export function fetchEmployees(includeInactive = false) {
 
 export function fetchConfig() {
   return getJSON<SolverConfig>('/api/v1/config')
+}
+
+export interface UpdateGateShiftRequirementParams extends GateShiftRequirement {
+  shift_hours: number
+}
+
+export function updateGateShiftRequirement(gateCode: string, shiftType: ShiftType, params: UpdateGateShiftRequirementParams) {
+  return putJSON<SolverConfig>(`/api/v1/config/gates/${encodeURIComponent(gateCode)}/shifts/${encodeURIComponent(shiftType)}`, params)
 }
 
 export interface CreateEmployeeParams {

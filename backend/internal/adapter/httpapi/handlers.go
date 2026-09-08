@@ -96,6 +96,25 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, http.StatusOK, config)
 }
 
+func (s *Server) handleUpdateGateShiftRequirement(w http.ResponseWriter, r *http.Request) {
+	var body updateGateShiftRequirementRequestBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	config, err := s.Config.UpdateGateShiftRequirement(
+		r.Context(),
+		r.PathValue("gate_code"),
+		domain.ShiftType(r.PathValue("shift_type")),
+		domain.GateShiftRequirement{NV: body.NV, Lead: body.Lead, LeadMandatoryRole: body.LeadMandatoryRole},
+		body.ShiftHours,
+	)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, config)
+}
+
 func parseIncludeInactive(r *http.Request) (bool, error) {
 	raw := r.URL.Query().Get("include_inactive")
 	if raw == "" {

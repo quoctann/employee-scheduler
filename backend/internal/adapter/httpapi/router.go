@@ -16,6 +16,7 @@ func NewRouter(s *Server, corsOrigin string) http.Handler {
 	mux.HandleFunc("PUT /api/v1/employees/{employee_id}/availability", s.handleSetAvailability)
 	mux.HandleFunc("PUT /api/v1/employees/{employee_id}/leave", s.handleSetLeaveDay)
 	mux.HandleFunc("GET /api/v1/config", s.handleGetConfig)
+	mux.HandleFunc("PUT /api/v1/config/gates/{gate_code}/shifts/{shift_type}", s.handleUpdateGateShiftRequirement)
 	mux.HandleFunc("POST /api/v1/schedule/solve", s.handleSolve)
 	mux.HandleFunc("GET /api/v1/schedule/latest", s.handleLatestSchedule)
 	mux.HandleFunc("POST /api/v1/schedule/approve", s.handleApprove)

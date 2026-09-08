@@ -120,6 +120,26 @@ export interface AckResponse {
 
 export type ShiftHours = Record<string, Partial<Record<ShiftType, number>>>
 
+export interface GateShiftRequirement {
+  nv: number
+  lead: number
+  lead_mandatory_role: boolean
+}
+
+export type GateShiftRequirements = Record<string, Partial<Record<ShiftType, GateShiftRequirement>>>
+
+export interface SolverWeights {
+  shortfall_penalty: number
+  lead_shortfall_penalty: number
+  balance_penalty_weight: number
+  streak_penalty_weight: number
+  streak_length: number
+}
+
 export interface SolverConfig {
+  requirements: GateShiftRequirements
   shift_hours: ShiftHours
+  lead_gates: string[]
+  target_hours_per_week: number
+  weights: SolverWeights
 }
