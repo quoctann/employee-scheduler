@@ -141,6 +141,14 @@ export function ScheduleTable({ employees, schedule, startDate, numDays, shiftHo
   )
 }
 
+/** Picks `preferred` if the gate actually offers it, otherwise falls back to
+ *  whichever shift the gate does offer — so the Ca dropdown never lands on a
+ *  combination that isn't in the config. */
+function pickValidShift(shiftHours: ShiftHours, gate: string, preferred: ShiftType): ShiftType {
+  if (shiftHours[gate]?.[preferred] !== undefined) return preferred
+  return (['sang', 'dem'] as const).find((candidate) => shiftHours[gate]?.[candidate] !== undefined) ?? preferred
+}
+
 function EditableCell({
   value,
   shiftHours,
@@ -152,17 +160,24 @@ function EditableCell({
   edited: boolean
   onSave: (assignment: CellAssignment | null) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [gate, setGate] = useState(value?.gate ?? '')
-  const [shift, setShift] = useState<ShiftType>(value?.shift ?? 'sang')
   const gates = Object.keys(shiftHours).sort()
+  const [open, setOpen] = useState(false)
+  // Default an "Off" cell (no gate yet) to the first configured gate rather
+  // than '' — a <select> with no option matching its value falls back to
+  // displaying the first <option> anyway, so leaving state at '' meant the
+  // dropdown *looked* like a gate was picked while `shifts` (derived from the
+  // real, empty `gate` state) stayed empty and Ca couldn't be chosen until
+  // the user picked a genuinely different gate to trigger the onChange reset.
+  const [gate, setGate] = useState(() => value?.gate ?? gates[0] ?? '')
+  const [shift, setShift] = useState<ShiftType>(() => pickValidShift(shiftHours, value?.gate ?? gates[0] ?? '', value?.shift ?? 'sang'))
   const shifts = (['sang', 'dem'] as const).filter((candidate) => shiftHours[gate]?.[candidate] !== undefined)
   const hours = value ? shiftHours[value.gate]?.[value.shift] : undefined
 
   function handleOpenChange(next: boolean) {
     if (next) {
-      setGate(value?.gate ?? '')
-      setShift(value?.shift ?? 'sang')
+      const nextGate = value?.gate ?? gates[0] ?? ''
+      setGate(nextGate)
+      setShift(pickValidShift(shiftHours, nextGate, value?.shift ?? 'sang'))
     }
     setOpen(next)
   }

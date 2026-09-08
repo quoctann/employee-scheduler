@@ -67,3 +67,51 @@ func TestConfigRepository_UpdateGateShiftRequirement_UnknownPair_ReturnsErrGateS
 		t.Fatalf("UpdateGateShiftRequirement() error = %v, want ErrGateShiftNotFound", err)
 	}
 }
+
+func TestConfigRepository_RenameGate_CascadesToReferencingTables(t *testing.T) {
+	pool := testPool(t)
+	repo := NewConfigRepository(pool)
+
+	if err := repo.RenameGate(context.Background(), "A", "A2"); err != nil {
+		t.Fatalf("RenameGate() error = %v", err)
+	}
+
+	config, err := repo.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if _, stillThere := config.ShiftHours["A"]; stillThere {
+		t.Fatalf("Get() still has old code %q: %+v", "A", config.ShiftHours)
+	}
+	if config.ShiftHours["A2"][domain.ShiftDem] != 13 {
+		t.Fatalf("Get() = %+v, want the seeded A/dem requirement to follow the new code A2", config.ShiftHours)
+	}
+
+	var orphaned int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM gate_shift_requirements WHERE gate_code = 'A'`).Scan(&orphaned); err != nil {
+		t.Fatalf("count orphaned gate_shift_requirements: %v", err)
+	}
+	if orphaned != 0 {
+		t.Fatalf("gate_shift_requirements still has %d row(s) referencing the old code, want the FK's ON UPDATE CASCADE to have renamed them", orphaned)
+	}
+}
+
+func TestConfigRepository_RenameGate_UnknownGate_ReturnsErrGateNotFound(t *testing.T) {
+	pool := testPool(t)
+	repo := NewConfigRepository(pool)
+
+	err := repo.RenameGate(context.Background(), "does-not-exist", "X")
+	if !errors.Is(err, port.ErrGateNotFound) {
+		t.Fatalf("RenameGate() error = %v, want ErrGateNotFound", err)
+	}
+}
+
+func TestConfigRepository_RenameGate_ExistingNewCode_ReturnsErrGateConflict(t *testing.T) {
+	pool := testPool(t)
+	repo := NewConfigRepository(pool)
+
+	err := repo.RenameGate(context.Background(), "A", "B")
+	if !errors.Is(err, port.ErrGateConflict) {
+		t.Fatalf("RenameGate() error = %v, want ErrGateConflict", err)
+	}
+}

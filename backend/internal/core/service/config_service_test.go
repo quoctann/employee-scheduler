@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
@@ -81,5 +82,69 @@ func TestConfigService_UpdateGateShiftRequirement_NotFoundMapsToErrNotFound(t *t
 	_, err := NewConfigService(repo).UpdateGateShiftRequirement(context.Background(), "Z", domain.ShiftSang, domain.GateShiftRequirement{}, 8)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("UpdateGateShiftRequirement() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestConfigService_RenameGate_HappyPath(t *testing.T) {
+	repo := &fakeConfigRepository{config: domain.SolverConfig{
+		Requirements: map[string]map[domain.ShiftType]domain.GateShiftRequirement{"A": {domain.ShiftSang: {NV: 2}}},
+		ShiftHours:   map[string]map[domain.ShiftType]int{"A": {domain.ShiftSang: 8}},
+		LeadGates:    []string{"A"},
+	}}
+	svc := NewConfigService(repo)
+
+	got, err := svc.RenameGate(context.Background(), "A", "A2")
+	if err != nil {
+		t.Fatalf("RenameGate() error = %v", err)
+	}
+	if repo.lastRenameOld != "A" || repo.lastRenameNew != "A2" {
+		t.Fatalf("repository received old=%q new=%q, want A/A2", repo.lastRenameOld, repo.lastRenameNew)
+	}
+	if _, stillThere := got.Requirements["A"]; stillThere {
+		t.Fatalf("RenameGate() left old code %q in Requirements: %+v", "A", got.Requirements)
+	}
+	if got.Requirements["A2"][domain.ShiftSang].NV != 2 {
+		t.Fatalf("RenameGate() = %+v, want requirement to follow the new code", got.Requirements)
+	}
+	if len(got.LeadGates) != 1 || got.LeadGates[0] != "A2" {
+		t.Fatalf("RenameGate() lead_gates = %v, want [A2]", got.LeadGates)
+	}
+}
+
+func TestConfigService_RenameGate_ValidatesInput(t *testing.T) {
+	cases := []struct {
+		name    string
+		oldCode string
+		newCode string
+	}{
+		{"blank old code", "  ", "B"},
+		{"blank new code", "A", "  "},
+		{"new code has invalid characters", "A", "A/2"},
+		{"new code too long", "A", strings.Repeat("x", maxGateCodeLength+1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewConfigService(&fakeConfigRepository{})
+			_, err := svc.RenameGate(context.Background(), tc.oldCode, tc.newCode)
+			if !errors.Is(err, ErrInvalidInput) {
+				t.Fatalf("RenameGate() error = %v, want ErrInvalidInput", err)
+			}
+		})
+	}
+}
+
+func TestConfigService_RenameGate_NotFoundMapsToErrNotFound(t *testing.T) {
+	repo := &fakeConfigRepository{renameErr: port.ErrGateNotFound}
+	_, err := NewConfigService(repo).RenameGate(context.Background(), "Z", "Y")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("RenameGate() error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestConfigService_RenameGate_ConflictMapsToErrConflict(t *testing.T) {
+	repo := &fakeConfigRepository{renameErr: port.ErrGateConflict}
+	_, err := NewConfigService(repo).RenameGate(context.Background(), "A", "B")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("RenameGate() error = %v, want ErrConflict", err)
 	}
 }

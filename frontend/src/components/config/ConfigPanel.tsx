@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { useConfig, useUpdateGateShiftRequirement } from '@/api/hooks'
+import { useConfig, useRenameGate, useUpdateGateShiftRequirement } from '@/api/hooks'
 import type { ShiftType } from '@/api/types'
 import { errorMessage } from '@/lib/errors'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +25,31 @@ interface RequirementForm {
 export function ConfigPanel() {
   const configQuery = useConfig()
   const update = useUpdateGateShiftRequirement()
+  const rename = useRenameGate()
   const [editing, setEditing] = useState<RequirementForm | null>(null)
+  const [renamingGate, setRenamingGate] = useState<string | null>(null)
+  const [newGateCode, setNewGateCode] = useState('')
+
+  function openRename(gate: string) {
+    setRenamingGate(gate)
+    setNewGateCode(gate)
+  }
+
+  function handleRename(event: FormEvent) {
+    event.preventDefault()
+    if (!renamingGate) return
+    const trimmed = newGateCode.trim()
+    rename.mutate(
+      { gateCode: renamingGate, newCode: trimmed },
+      {
+        onSuccess: () => {
+          toast.success(`Đã đổi tên cổng ${renamingGate} thành ${trimmed}`)
+          setRenamingGate(null)
+        },
+        onError: (error) => toast.error(errorMessage(error)),
+      },
+    )
+  }
 
   function openEdit(gate: string, shift: ShiftType) {
     const config = configQuery.data
@@ -93,39 +117,55 @@ export function ConfigPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {gates.map((gate) =>
-                  (['sang', 'dem'] as const)
-                    .filter((shift) => config.requirements[gate]?.[shift] !== undefined)
-                    .map((shift) => {
-                      const requirement = config.requirements[gate][shift]!
-                      return (
-                        <TableRow key={`${gate}-${shift}`}>
-                          <TableCell className="font-medium">
-                            {gate}
-                            {leadGates.has(gate) && (
-                              <Badge variant="outline" className="ml-2">
-                                Chốt cần trưởng ca
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{shiftLabel[shift]}</TableCell>
-                          <TableCell className="text-right">{requirement.nv}</TableCell>
-                          <TableCell className="text-right">{requirement.lead}</TableCell>
-                          <TableCell>
-                            <Badge variant={requirement.lead_mandatory_role ? 'destructive' : 'outline'}>
-                              {requirement.lead_mandatory_role ? 'Bắt buộc TC' : 'Không bắt buộc'}
+                {gates.map((gate) => {
+                  const shiftsForGate = (['sang', 'dem'] as const).filter(
+                    (shift) => config.requirements[gate]?.[shift] !== undefined,
+                  )
+                  return shiftsForGate.map((shift) => {
+                    const requirement = config.requirements[gate][shift]!
+                    return (
+                      <TableRow key={`${gate}-${shift}`}>
+                        <TableCell className="font-medium">
+                          {gate}
+                          {leadGates.has(gate) && (
+                            <Badge variant="outline" className="ml-2">
+                              Chốt cần trưởng ca
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">{config.shift_hours[gate]?.[shift] ?? '—'}</TableCell>
-                          <TableCell className="text-right">
-                            <Button type="button" size="sm" variant="outline" onClick={() => openEdit(gate, shift)}>
-                              Sửa
+                          )}
+                          {/* Renaming applies to the gate, not a single
+                              shift row — only show the button once, on the
+                              first row for this gate, to avoid repeating it
+                              per shift. */}
+                          {shift === shiftsForGate[0] && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="ml-2 h-6 px-2 text-xs"
+                              onClick={() => openRename(gate)}
+                            >
+                              Đổi tên
                             </Button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    }),
-                )}
+                          )}
+                        </TableCell>
+                        <TableCell>{shiftLabel[shift]}</TableCell>
+                        <TableCell className="text-right">{requirement.nv}</TableCell>
+                        <TableCell className="text-right">{requirement.lead}</TableCell>
+                        <TableCell>
+                          <Badge variant={requirement.lead_mandatory_role ? 'destructive' : 'outline'}>
+                            {requirement.lead_mandatory_role ? 'Bắt buộc TC' : 'Không bắt buộc'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{config.shift_hours[gate]?.[shift] ?? '—'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button type="button" size="sm" variant="outline" onClick={() => openEdit(gate, shift)}>
+                            Sửa
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                })}
               </TableBody>
             </Table>
           )}
@@ -198,6 +238,40 @@ export function ConfigPanel() {
                 </Button>
                 <Button type="submit" disabled={update.isPending}>
                   {update.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={renamingGate !== null} onOpenChange={(open) => !open && setRenamingGate(null)}>
+        <DialogContent>
+          {renamingGate && (
+            <form onSubmit={handleRename} className="grid gap-4">
+              <DialogHeader>
+                <DialogTitle>Đổi tên cổng {renamingGate}</DialogTitle>
+                <DialogDescription>
+                  Mã cổng mới sẽ áp dụng cho toàn bộ cấu hình, lịch đã duyệt và lịch sử xếp lịch của cổng này.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-1.5">
+                <Label htmlFor="gate-new-code">Mã cổng mới</Label>
+                <Input
+                  id="gate-new-code"
+                  value={newGateCode}
+                  onChange={(event) => setNewGateCode(event.target.value)}
+                  maxLength={20}
+                  required
+                  autoFocus
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setRenamingGate(null)}>
+                  Hủy
+                </Button>
+                <Button type="submit" disabled={rename.isPending || newGateCode.trim() === ''}>
+                  {rename.isPending ? 'Đang đổi tên...' : 'Đổi tên'}
                 </Button>
               </DialogFooter>
             </form>

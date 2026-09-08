@@ -26,11 +26,12 @@ export function ShortagesTable({ shortages }: { shortages: ShortageItem[] }) {
             <TableCell>{s.gate}</TableCell>
             <TableCell>{s.shift === 'dem' ? 'Đêm' : 'Sáng'}</TableCell>
             <TableCell>
-              <Badge variant={s.shortage_type === 'lead' ? 'destructive' : 'outline'}>
-                {s.shortage_type === 'lead' ? 'Thiếu lead' : 'Thiếu NV'}
-              </Badge>
+              {/* Both shortage types leave the gate unable to operate — a
+                  missing rank-and-file NV is just as critical as a missing
+                  lead, so both render as destructive, not just "lead". */}
+              <Badge variant="destructive">{s.shortage_type === 'lead' ? 'Thiếu lead' : 'Thiếu NV'}</Badge>
             </TableCell>
-            <TableCell className="text-right font-medium">{s.missing}</TableCell>
+            <TableCell className="text-right font-semibold text-destructive">{s.missing}</TableCell>
           </TableRow>
         ))}
       </TableBody>

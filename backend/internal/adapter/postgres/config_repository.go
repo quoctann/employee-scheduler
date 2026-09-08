@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
@@ -109,6 +111,25 @@ func (r *ConfigRepository) UpdateGateShiftRequirement(ctx context.Context, gateC
 	}
 	if tag.RowsAffected() == 0 {
 		return port.ErrGateShiftNotFound
+	}
+	return nil
+}
+
+// RenameGate updates gates.code; the ON UPDATE CASCADE added in
+// migrations/0004_gate_rename_cascade propagates the new code to
+// gate_shift_requirements, approved_assignments, schedule_assignments, and
+// schedule_shortages in the same statement.
+func (r *ConfigRepository) RenameGate(ctx context.Context, oldCode, newCode string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE gates SET code = $2 WHERE code = $1`, oldCode, newCode)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return port.ErrGateConflict
+		}
+		return fmt.Errorf("rename gate: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return port.ErrGateNotFound
 	}
 	return nil
 }

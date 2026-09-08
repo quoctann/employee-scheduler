@@ -115,6 +115,19 @@ func (s *Server) handleUpdateGateShiftRequirement(w http.ResponseWriter, r *http
 	writeOK(w, http.StatusOK, config)
 }
 
+func (s *Server) handleRenameGate(w http.ResponseWriter, r *http.Request) {
+	var body renameGateRequestBody
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	config, err := s.Config.RenameGate(r.Context(), r.PathValue("gate_code"), body.NewCode)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, config)
+}
+
 func parseIncludeInactive(r *http.Request) (bool, error) {
 	raw := r.URL.Query().Get("include_inactive")
 	if raw == "" {

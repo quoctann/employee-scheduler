@@ -91,6 +91,10 @@ type updateGateShiftRequirementRequestBody struct {
 	ShiftHours        int  `json:"shift_hours"`
 }
 
+type renameGateRequestBody struct {
+	NewCode string `json:"new_code"`
+}
+
 type ackResponseBody struct {
 	OK bool `json:"ok"`
 }

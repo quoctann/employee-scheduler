@@ -218,9 +218,21 @@ export function ScheduleView() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className={
+              result.shortages.length > 0 ? 'ring-2 ring-destructive/60 bg-destructive/5' : undefined
+            }
+          >
             <CardHeader>
-              <CardTitle>Thiếu ca ({result.shortages.length})</CardTitle>
+              <CardTitle className={result.shortages.length > 0 ? 'text-destructive' : undefined}>
+                {result.shortages.length > 0 ? '⚠ ' : ''}
+                Thiếu ca ({result.shortages.length})
+              </CardTitle>
+              {result.shortages.length > 0 && (
+                <p className="text-sm text-destructive">
+                  Thiếu nhân sự khiến cổng không đủ người để hoạt động — cần xử lý trước khi phê duyệt lịch.
+                </p>
+              )}
             </CardHeader>
             <CardContent>
               <ShortagesTable shortages={result.shortages} />

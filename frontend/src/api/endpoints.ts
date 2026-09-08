@@ -33,6 +33,10 @@ export function updateGateShiftRequirement(gateCode: string, shiftType: ShiftTyp
   return putJSON<SolverConfig>(`/api/v1/config/gates/${encodeURIComponent(gateCode)}/shifts/${encodeURIComponent(shiftType)}`, params)
 }
 
+export function renameGate(gateCode: string, newCode: string) {
+  return putJSON<SolverConfig>(`/api/v1/config/gates/${encodeURIComponent(gateCode)}/rename`, { new_code: newCode })
+}
+
 export interface CreateEmployeeParams {
   employee_id: string
   name: string

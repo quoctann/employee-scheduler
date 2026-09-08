@@ -27,6 +27,16 @@ export function useUpdateGateShiftRequirement() {
   })
 }
 
+export function useRenameGate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ gateCode, newCode }: { gateCode: string; newCode: string }) => api.renameGate(gateCode, newCode),
+    onSuccess: (config: SolverConfig) => {
+      queryClient.setQueryData(['config'], config)
+    },
+  })
+}
+
 export function useLatestSchedule() {
   return useQuery({ queryKey: ['schedule', 'latest'], queryFn: api.fetchLatestSchedule })
 }

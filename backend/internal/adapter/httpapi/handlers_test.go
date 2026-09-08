@@ -395,6 +395,75 @@ func TestHandleUpdateGateShiftRequirement_UnknownGateShift_Returns404(t *testing
 	}
 }
 
+func TestHandleRenameGate_HappyPath(t *testing.T) {
+	cfgRepo := &fakeConfigRepository{config: domain.SolverConfig{
+		Requirements: map[string]map[domain.ShiftType]domain.GateShiftRequirement{"B": {domain.ShiftDem: {NV: 1}}},
+		ShiftHours:   map[string]map[domain.ShiftType]int{"B": {domain.ShiftDem: 12}},
+	}}
+	router := newTestServer(t, nil, nil, nil, cfgRepo)
+
+	body, _ := json.Marshal(map[string]any{"new_code": "B2"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/config/gates/B/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	env := decodeEnvelope(t, rec)
+	var config domain.SolverConfig
+	if err := json.Unmarshal(env.Data, &config); err != nil {
+		t.Fatalf("decode data: %v", err)
+	}
+	if _, ok := config.Requirements["B"]; ok {
+		t.Fatalf("renamed config still has old code %q: %+v", "B", config.Requirements)
+	}
+	if config.Requirements["B2"][domain.ShiftDem].NV != 1 {
+		t.Fatalf("renamed config = %+v, want requirement to follow the new code", config.Requirements)
+	}
+}
+
+func TestHandleRenameGate_InvalidBody_Returns400(t *testing.T) {
+	router := newTestServer(t, nil, nil, nil, nil)
+
+	body, _ := json.Marshal(map[string]any{"new_code": "bad/code"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/config/gates/A/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleRenameGate_UnknownGate_Returns404(t *testing.T) {
+	cfgRepo := &fakeConfigRepository{renameErr: port.ErrGateNotFound}
+	router := newTestServer(t, nil, nil, nil, cfgRepo)
+
+	body, _ := json.Marshal(map[string]any{"new_code": "B2"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/config/gates/Z/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleRenameGate_ExistingNewCode_Returns409(t *testing.T) {
+	cfgRepo := &fakeConfigRepository{renameErr: port.ErrGateConflict}
+	router := newTestServer(t, nil, nil, nil, cfgRepo)
+
+	body, _ := json.Marshal(map[string]any{"new_code": "B"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/config/gates/A/rename", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCORSPreflight_ReturnsNoContentWithHeaders(t *testing.T) {
 	router := newTestServer(t, nil, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/schedule/solve", nil)

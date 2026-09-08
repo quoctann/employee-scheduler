@@ -81,6 +81,7 @@ type fakeConfigRepository struct {
 	config    domain.SolverConfig
 	err       error
 	updateErr error
+	renameErr error
 }
 
 func (f *fakeConfigRepository) Get(context.Context) (domain.SolverConfig, error) {
@@ -105,6 +106,26 @@ func (f *fakeConfigRepository) UpdateGateShiftRequirement(_ context.Context, gat
 		f.config.ShiftHours[gateCode] = map[domain.ShiftType]int{}
 	}
 	f.config.ShiftHours[gateCode][shiftType] = shiftHours
+	return nil
+}
+
+func (f *fakeConfigRepository) RenameGate(_ context.Context, oldCode, newCode string) error {
+	if f.renameErr != nil {
+		return f.renameErr
+	}
+	if requirement, ok := f.config.Requirements[oldCode]; ok {
+		delete(f.config.Requirements, oldCode)
+		f.config.Requirements[newCode] = requirement
+	}
+	if shiftHours, ok := f.config.ShiftHours[oldCode]; ok {
+		delete(f.config.ShiftHours, oldCode)
+		f.config.ShiftHours[newCode] = shiftHours
+	}
+	for i, gate := range f.config.LeadGates {
+		if gate == oldCode {
+			f.config.LeadGates[i] = newCode
+		}
+	}
 	return nil
 }
 
