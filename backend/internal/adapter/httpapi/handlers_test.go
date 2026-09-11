@@ -11,6 +11,7 @@ import (
 
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/httpapi"
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
+	"github.com/tantq/employee-scheduler-backend/internal/adapter/xlsxexport"
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
 	"github.com/tantq/employee-scheduler-backend/internal/core/port"
 	"github.com/tantq/employee-scheduler-backend/internal/core/service"
@@ -38,6 +39,7 @@ func newTestServer(t *testing.T, solver *fakeSolverGateway, empRepo *fakeEmploye
 		Approve:    service.NewApproveService(schedRepo),
 		Capacity:   service.NewCapacityService(solver, empRepo, cfgRepo),
 		Candidates: service.NewCandidateService(solver, empRepo, cfgRepo, schedRepo),
+		Export:     service.NewExportService(empRepo, cfgRepo, schedRepo, xlsxexport.New()),
 	}
 	return httpapi.NewRouter(s, "http://localhost:5173")
 }
@@ -522,5 +524,54 @@ func TestCORSPreflight_ReturnsNoContentWithHeaders(t *testing.T) {
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodDelete) {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want DELETE", got)
+	}
+}
+
+func TestHandleExportSchedule_NoLatestRun_ReturnsJSONErrorEnvelope(t *testing.T) {
+	schedRepo := &fakeScheduleRepository{latestFound: false}
+	router := newTestServer(t, nil, nil, schedRepo, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedule/export", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404; body=%s", rec.Code, rec.Body.String())
+	}
+	env := decodeEnvelope(t, rec)
+	if env.Success {
+		t.Fatalf("expected success=false, got %+v", env)
+	}
+}
+
+func TestHandleExportSchedule_LatestRun_ReturnsXlsxAttachment(t *testing.T) {
+	start, _ := domain.ParseDate("2026-09-07")
+	schedRepo := &fakeScheduleRepository{
+		latestFound: true,
+		latestResult: domain.SolveResult{
+			StartDate: start,
+			NumDays:   7,
+			Schedule:  []domain.ScheduleEntry{{EmployeeID: "NV01", Date: start, Gate: "A", Shift: domain.ShiftSang}},
+		},
+	}
+	empRepo := &fakeEmployeeRepository{employees: []domain.Employee{{EmployeeID: "NV01", Name: "NV01", Role: domain.RoleNV}}}
+	router := newTestServer(t, nil, empRepo, schedRepo, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedule/export", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if got := rec.Header().Get("Content-Disposition"); !strings.Contains(got, "lich-xep-ca_2026-09-07_7ngay.xlsx") {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+	// .xlsx is a zip archive — every zip starts with the "PK" local-file-header signature.
+	if body := rec.Body.Bytes(); len(body) < 2 || body[0] != 'P' || body[1] != 'K' {
+		t.Fatalf("response body doesn't look like a zip/xlsx file (first bytes: %v)", body[:min(len(body), 8)])
 	}
 }

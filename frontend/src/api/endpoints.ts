@@ -1,4 +1,4 @@
-import { deleteJSON, getJSON, postJSON, putJSON } from './client'
+import { BASE_URL, deleteJSON, getJSON, postJSON, putJSON } from './client'
 import type {
   AckResponse,
   ApproveResponse,
@@ -101,6 +101,12 @@ export function unapproveAssignments(params: UnapproveParams) {
 export function fetchApprovedAssignments(startDate: string, numDays: number) {
   const params = new URLSearchParams({ start_date: startDate, num_days: String(numDays) })
   return getJSON<ListApprovedResponse>(`/api/v1/schedule/approved?${params.toString()}`)
+}
+
+// Not a fetch+blob download: the endpoint has no auth, so the browser can
+// just navigate to it directly and let Content-Disposition drive the save.
+export function scheduleExportUrl() {
+  return `${BASE_URL}/api/v1/schedule/export`
 }
 
 export interface CapacityCheckParams {

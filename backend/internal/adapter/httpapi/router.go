@@ -23,6 +23,7 @@ func NewRouter(s *Server, corsOrigin string) http.Handler {
 	mux.HandleFunc("POST /api/v1/schedule/approve", s.handleApprove)
 	mux.HandleFunc("POST /api/v1/schedule/unapprove", s.handleUnapprove)
 	mux.HandleFunc("GET /api/v1/schedule/approved", s.handleListApproved)
+	mux.HandleFunc("GET /api/v1/schedule/export", s.handleExportSchedule)
 	mux.HandleFunc("POST /api/v1/capacity-check", s.handleCapacityCheck)
 	mux.HandleFunc("POST /api/v1/candidates", s.handleCandidates)
 

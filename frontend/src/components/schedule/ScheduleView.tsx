@@ -15,6 +15,7 @@ import {
   useSolve,
   useUnapprove,
 } from '@/api/hooks'
+import * as api from '@/api/endpoints'
 import { errorMessage } from '@/lib/errors'
 import { addWeeks, dateRange, formatShortDate, startOfWeek, todayISO } from '@/lib/dates'
 import type { LockedAssignment, ScheduleEntry } from '@/api/types'
@@ -239,6 +240,11 @@ export function ScheduleView() {
                 disabled={unapprove.isPending}
               >
                 {unapprove.isPending ? 'Đang hủy...' : 'Hủy phê duyệt'}
+              </Button>
+            )}
+            {result && (
+              <Button type="button" variant="outline" asChild>
+                <a href={api.scheduleExportUrl()}>Xuất Excel</a>
               </Button>
             )}
           </form>

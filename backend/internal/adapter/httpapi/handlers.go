@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -19,6 +20,7 @@ type Server struct {
 	Approve    *service.ApproveService
 	Capacity   *service.CapacityService
 	Candidates *service.CandidateService
+	Export     *service.ExportService
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -253,6 +255,25 @@ func (s *Server) handleListApproved(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, http.StatusOK, listApprovedResponseBody{Assignments: assignments})
+}
+
+// handleExportSchedule is the only endpoint that doesn't use the
+// {success,data,error} JSON envelope — it streams a binary .xlsx workbook
+// instead. Errors still go through handleError, so a missing schedule (or
+// any other failure) still comes back as the usual JSON error envelope.
+func (s *Server) handleExportSchedule(w http.ResponseWriter, r *http.Request) {
+	fileBytes, filename, err := s.Export.Export(r.Context())
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(fileBytes)))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(fileBytes); err != nil {
+		log.Printf("write export response: %v", err)
+	}
 }
 
 func (s *Server) handleCapacityCheck(w http.ResponseWriter, r *http.Request) {
