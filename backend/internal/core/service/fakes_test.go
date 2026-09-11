@@ -228,9 +228,21 @@ func (f *fakeScheduleRepository) UnapproveAssignments(_ context.Context, from, t
 	return f.unapproveCount, f.unapproveErr
 }
 
+type fakeExportRenderer struct {
+	lastData     port.ScheduleExportData
+	renderResult []byte
+	renderErr    error
+}
+
+func (f *fakeExportRenderer) RenderScheduleWorkbook(data port.ScheduleExportData) ([]byte, error) {
+	f.lastData = data
+	return f.renderResult, f.renderErr
+}
+
 var (
 	_ port.SolverGateway      = (*fakeSolverGateway)(nil)
 	_ port.EmployeeRepository = (*fakeEmployeeRepository)(nil)
 	_ port.ConfigRepository   = (*fakeConfigRepository)(nil)
 	_ port.ScheduleRepository = (*fakeScheduleRepository)(nil)
+	_ port.ExportRenderer     = (*fakeExportRenderer)(nil)
 )

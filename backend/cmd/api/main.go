@@ -15,6 +15,7 @@ import (
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/httpapi"
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/postgres"
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
+	"github.com/tantq/employee-scheduler-backend/internal/adapter/xlsxexport"
 	"github.com/tantq/employee-scheduler-backend/internal/config"
 	"github.com/tantq/employee-scheduler-backend/internal/core/service"
 )
@@ -46,6 +47,7 @@ func main() {
 		Approve:    service.NewApproveService(scheduleRepo),
 		Capacity:   service.NewCapacityService(solverGateway, employeeRepo, configRepo),
 		Candidates: service.NewCandidateService(solverGateway, employeeRepo, configRepo, scheduleRepo),
+		Export:     service.NewExportService(employeeRepo, configRepo, scheduleRepo, xlsxexport.New()),
 	}
 
 	httpServer := &http.Server{
