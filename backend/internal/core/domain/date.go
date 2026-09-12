@@ -62,6 +62,15 @@ func (d Date) MarshalText() ([]byte, error) {
 	return []byte(d.Format(dateLayout)), nil
 }
 
+// AppendText must be defined explicitly for the same reason MarshalJSON is
+// below: time.Time implements encoding.TextAppender (RFC3339), and
+// encoding/json's map-key encoder prefers TextAppender over TextMarshaler,
+// so without this override a map[Date]V would silently encode keys via the
+// promoted time.Time.AppendText instead of our "YYYY-MM-DD" format.
+func (d Date) AppendText(b []byte) ([]byte, error) {
+	return d.Time.AppendFormat(b, dateLayout), nil
+}
+
 func (d *Date) UnmarshalText(b []byte) error {
 	t, err := time.Parse(dateLayout, string(b))
 	if err != nil {
