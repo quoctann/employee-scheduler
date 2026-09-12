@@ -1,11 +1,19 @@
-import { useCallback, useMemo, useState, type FormEvent } from 'react'
-import { CircleCheckIcon } from 'lucide-react'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { CircleCheckIcon } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   useApprove,
   useApprovedAssignments,
@@ -14,12 +22,12 @@ import {
   useLatestSchedule,
   useSolve,
   useUnapprove,
-} from '@/api/hooks'
-import * as api from '@/api/endpoints'
-import { errorMessage } from '@/lib/errors'
-import { addWeeks, dateRange, formatShortDate, startOfWeek, todayISO } from '@/lib/dates'
-import type { LockedAssignment, ScheduleEntry } from '@/api/types'
-import { EmployeeSummaryTable } from './EmployeeSummaryTable'
+} from '@/api/hooks';
+import * as api from '@/api/endpoints';
+import { errorMessage } from '@/lib/errors';
+import { addWeeks, dateRange, formatShortDate, startOfWeek, todayISO } from '@/lib/dates';
+import type { LockedAssignment, ScheduleEntry } from '@/api/types';
+import { EmployeeSummaryTable } from './EmployeeSummaryTable';
 import {
   overrideKey,
   resolveApprovedBaseline,
@@ -27,38 +35,38 @@ import {
   ScheduleTable,
   type CellAssignment,
   type CellOverrides,
-} from './ScheduleTable'
-import { ShortagesTable } from './ShortagesTable'
+} from './ScheduleTable';
+import { ShortagesTable } from './ShortagesTable';
 
-const MIN_DAYS = 1
-const MAX_DAYS = 180
-const WEEK_DAYS = 7
+const MIN_DAYS = 1;
+const MAX_DAYS = 180;
+const WEEK_DAYS = 7;
 
 function clampNumDays(raw: string): number {
-  const n = Math.floor(Number(raw))
-  if (!Number.isFinite(n)) return MIN_DAYS
-  return Math.min(MAX_DAYS, Math.max(MIN_DAYS, n))
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return MIN_DAYS;
+  return Math.min(MAX_DAYS, Math.max(MIN_DAYS, n));
 }
 
 export function ScheduleView() {
-  const [startDate, setStartDate] = useState(() => startOfWeek(todayISO()))
-  const [numDays, setNumDays] = useState(WEEK_DAYS)
-  const [overrides, setOverrides] = useState<CellOverrides>(new Map())
-  const [overridesRunID, setOverridesRunID] = useState<number | undefined>(undefined)
-  const [solveDialogOpen, setSolveDialogOpen] = useState(false)
-  const [solveMode, setSolveMode] = useState<'unapproved_only' | 'all'>('unapproved_only')
-  const [unapproveDialogOpen, setUnapproveDialogOpen] = useState(false)
+  const [startDate, setStartDate] = useState(() => startOfWeek(todayISO()));
+  const [numDays, setNumDays] = useState(WEEK_DAYS);
+  const [overrides, setOverrides] = useState<CellOverrides>(new Map());
+  const [overridesRunID, setOverridesRunID] = useState<number | undefined>(undefined);
+  const [solveDialogOpen, setSolveDialogOpen] = useState(false);
+  const [solveMode, setSolveMode] = useState<'unapproved_only' | 'all'>('unapproved_only');
+  const [unapproveDialogOpen, setUnapproveDialogOpen] = useState(false);
 
-  const employeesQuery = useEmployees()
-  const configQuery = useConfig()
-  const latestQuery = useLatestSchedule()
-  const solve = useSolve()
-  const approve = useApprove()
-  const unapprove = useUnapprove()
+  const employeesQuery = useEmployees();
+  const configQuery = useConfig();
+  const latestQuery = useLatestSchedule();
+  const solve = useSolve();
+  const approve = useApprove();
+  const unapprove = useUnapprove();
 
-  const result = latestQuery.data?.found ? latestQuery.data.result : undefined
+  const result = latestQuery.data?.found ? latestQuery.data.result : undefined;
 
-  const approvedQuery = useApprovedAssignments(result?.start_date ?? '', result?.num_days ?? 0)
+  const approvedQuery = useApprovedAssignments(result?.start_date ?? '', result?.num_days ?? 0);
   // What's actually confirmed on the server, by cell — the durable baseline
   // both the grid's display AND handleApprove's submission fall back to for
   // any cell not currently in `overrides` (see resolveApprovedBaseline).
@@ -76,59 +84,76 @@ export function ScheduleView() {
   // re-approves or unapproves — a narrow, pre-existing edge case, not a
   // regression this introduces.
   const approvedAssignments = useMemo(() => {
-    const map = new Map<string, CellAssignment | null>()
+    const map = new Map<string, CellAssignment | null>();
     for (const a of approvedQuery.data?.assignments ?? []) {
-      map.set(overrideKey(a.employee_id, a.date), a.off ? null : { gate: a.gate!, shift: a.shift! })
+      map.set(
+        overrideKey(a.employee_id, a.date),
+        a.off ? null : { gate: a.gate!, shift: a.shift! },
+      );
     }
-    return map
-  }, [approvedQuery.data])
-  const shortageDates = useMemo(() => new Set((result?.shortages ?? []).map((s) => s.date)), [result])
+    return map;
+  }, [approvedQuery.data]);
+  const shortageDates = useMemo(
+    () => new Set((result?.shortages ?? []).map((s) => s.date)),
+    [result],
+  );
 
   // A fresh solve result replaces whatever manual overrides were staged on
   // top of the previous one — they applied to a schedule that's now gone.
   // Resetting during render (rather than in an effect) avoids an extra
   // render pass; see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
   if (result?.run_id !== overridesRunID) {
-    setOverridesRunID(result?.run_id)
-    setOverrides(new Map())
+    setOverridesRunID(result?.run_id);
+    setOverrides(new Map());
   }
 
   // The Start Date / Num Days inputs no longer submit directly — "Xếp lịch"
   // opens the mode dialog instead, so Enter in an input must not trigger a
   // solve behind the manager's back.
   function handleDateFormSubmit(e: FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
   }
 
   function runSolve(ignoreApproved: boolean) {
     solve.mutate(
-      { start_date: startDate, num_days: numDays, time_limit_s: 30, ignore_approved: ignoreApproved },
+      {
+        start_date: startDate,
+        num_days: numDays,
+        time_limit_s: 30,
+        ignore_approved: ignoreApproved,
+      },
       {
         onSuccess: (r) => {
-          setStartDate(r.start_date)
-          setNumDays(r.num_days)
-          toast.success(`Solve xong: ${r.status} — ${r.shortages.length} vị trí thiếu`)
+          setStartDate(r.start_date);
+          setNumDays(r.num_days);
+          toast.success(`Solve xong: ${r.status} — ${r.shortages.length} vị trí thiếu`);
         },
         onError: (err) => toast.error(errorMessage(err)),
       },
-    )
-    setSolveDialogOpen(false)
+    );
+    setSolveDialogOpen(false);
   }
 
-  const handleEditCell = useCallback((employeeId: string, date: string, assignment: CellAssignment | null) => {
-    setOverrides((prev) => {
-      const next = new Map(prev)
-      next.set(overrideKey(employeeId, date), assignment)
-      return next
-    })
-  }, [])
+  const handleEditCell = useCallback(
+    (employeeId: string, date: string, assignment: CellAssignment | null) => {
+      setOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(overrideKey(employeeId, date), assignment);
+        return next;
+      });
+    },
+    [],
+  );
 
   function handleApprove() {
-    if (!result || !employeesQuery.data) return
+    if (!result || !employeesQuery.data) return;
 
-    const worked = new Map<string, CellAssignment>()
+    const worked = new Map<string, CellAssignment>();
     for (const entry of result.schedule) {
-      worked.set(overrideKey(entry.employee_id, entry.date), { gate: entry.gate, shift: entry.shift })
+      worked.set(overrideKey(entry.employee_id, entry.date), {
+        gate: entry.gate,
+        shift: entry.shift,
+      });
     }
 
     // Approve the *whole* horizon, not just worked shifts — a day with no
@@ -143,32 +168,38 @@ export function ScheduleView() {
     // pre-edit value. Manual overrides staged in the grid still take
     // precedence over both, so a manager's click-to-edit is what actually
     // gets locked in.
-    const dates = dateRange(result.start_date, result.num_days)
+    const dates = dateRange(result.start_date, result.num_days);
     const assignments: LockedAssignment[] = employeesQuery.data.employees.flatMap((employee) =>
       dates.map((date): LockedAssignment => {
-        const key = overrideKey(employee.employee_id, date)
-        const baseline = resolveApprovedBaseline(approvedAssignments, key, worked.get(key) ?? null)
-        const shift = resolveCell(overrides, employee.employee_id, date, baseline)
+        const key = overrideKey(employee.employee_id, date);
+        const baseline = resolveApprovedBaseline(approvedAssignments, key, worked.get(key) ?? null);
+        const shift = resolveCell(overrides, employee.employee_id, date, baseline);
         return shift
-          ? { employee_id: employee.employee_id, date, gate: shift.gate, shift: shift.shift, off: false }
-          : { employee_id: employee.employee_id, date, gate: null, shift: null, off: true }
+          ? {
+              employee_id: employee.employee_id,
+              date,
+              gate: shift.gate,
+              shift: shift.shift,
+              off: false,
+            }
+          : { employee_id: employee.employee_id, date, gate: null, shift: null, off: true };
       }),
-    )
+    );
 
     approve.mutate(assignments, {
       onSuccess: (res) => {
-        toast.success(`Đã duyệt ${res.approved_count} ô — sẽ được giữ nguyên ở lần solve sau`)
+        toast.success(`Đã duyệt ${res.approved_count} ô — sẽ được giữ nguyên ở lần solve sau`);
         // Safe to clear now: any cell just submitted is about to reappear in
         // `approvedAssignments` (refetched by useApprove's onSuccess), which
         // is exactly what handleApprove and the grid both fall back to for a
         // cell with no live override — so nothing is lost by clearing.
-        setOverrides(new Map())
+        setOverrides(new Map());
       },
       onError: (err) => toast.error(errorMessage(err)),
-    })
+    });
   }
 
-  const scheduleForTable: ScheduleEntry[] = result?.schedule ?? []
+  const scheduleForTable: ScheduleEntry[] = result?.schedule ?? [];
 
   return (
     <div className="space-y-4">
@@ -191,13 +222,18 @@ export function ScheduleView() {
               variant="outline"
               size="sm"
               onClick={() => {
-                setStartDate(startOfWeek(todayISO()))
-                setNumDays(WEEK_DAYS)
+                setStartDate(startOfWeek(todayISO()));
+                setNumDays(WEEK_DAYS);
               }}
             >
               Tuần này
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setStartDate((s) => addWeeks(s, 1))}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setStartDate((s) => addWeeks(s, 1))}
+            >
               Tuần sau →
             </Button>
           </div>
@@ -224,12 +260,23 @@ export function ScheduleView() {
                 className="w-24"
               />
             </div>
-            <Button type="button" disabled={solve.isPending} onClick={() => setSolveDialogOpen(true)}>
+            <Button
+              type="button"
+              disabled={solve.isPending}
+              onClick={() => setSolveDialogOpen(true)}
+            >
               {solve.isPending ? 'Đang chạy...' : 'Xếp lịch'}
             </Button>
             {result && (
-              <Button type="button" variant="outline" onClick={handleApprove} disabled={approve.isPending}>
-                {approve.isPending ? 'Đang duyệt...' : `Phê duyệt lịch này${overrides.size > 0 ? ` (${overrides.size} ô đã sửa)` : ''}`}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleApprove}
+                disabled={approve.isPending}
+              >
+                {approve.isPending
+                  ? 'Đang duyệt...'
+                  : `Phê duyệt lịch này${overrides.size > 0 ? ` (${overrides.size} ô đã sửa)` : ''}`}
               </Button>
             )}
             {result && (
@@ -271,7 +318,9 @@ export function ScheduleView() {
               <span>
                 <span className="font-medium">Chỉ xếp các ô chưa duyệt</span>
                 <br />
-                <span className="text-xs text-muted-foreground">Giữ nguyên các ô đã phê duyệt, chỉ xếp lại phần còn lại.</span>
+                <span className="text-xs text-muted-foreground">
+                  Giữ nguyên các ô đã phê duyệt, chỉ xếp lại phần còn lại.
+                </span>
               </span>
             </label>
             <label className="flex items-start gap-2 text-sm">
@@ -286,8 +335,8 @@ export function ScheduleView() {
                 <span className="font-medium">Xếp lại toàn bộ</span>
                 <br />
                 <span className="text-xs text-muted-foreground">
-                  Bỏ qua các ô đã duyệt cho lần chạy này. Chỉ áp dụng cho kết quả lần này — dữ liệu đã duyệt trong hệ
-                  thống không đổi trừ khi bấm Phê duyệt lại.
+                  Bỏ qua các ô đã duyệt cho lần chạy này. Chỉ áp dụng cho kết quả lần này — dữ liệu
+                  đã duyệt trong hệ thống không đổi trừ khi bấm Phê duyệt lại.
                 </span>
               </span>
             </label>
@@ -298,7 +347,11 @@ export function ScheduleView() {
                 Hủy
               </Button>
             </DialogClose>
-            <Button type="button" onClick={() => runSolve(solveMode === 'all')} disabled={solve.isPending}>
+            <Button
+              type="button"
+              onClick={() => runSolve(solveMode === 'all')}
+              disabled={solve.isPending}
+            >
               {solve.isPending ? 'Đang chạy...' : 'Xếp lịch'}
             </Button>
           </DialogFooter>
@@ -325,17 +378,17 @@ export function ScheduleView() {
               variant="destructive"
               disabled={unapprove.isPending}
               onClick={() => {
-                if (!result) return
+                if (!result) return;
                 unapprove.mutate(
                   { start_date: result.start_date, num_days: result.num_days },
                   {
                     onSuccess: (res) => {
-                      toast.success(`Đã hủy phê duyệt ${res.unapproved_count} ô`)
-                      setUnapproveDialogOpen(false)
+                      toast.success(`Đã hủy phê duyệt ${res.unapproved_count} ô`);
+                      setUnapproveDialogOpen(false);
                     },
                     onError: (err) => toast.error(errorMessage(err)),
                   },
-                )
+                );
               }}
             >
               {unapprove.isPending ? 'Đang hủy...' : 'Xác nhận hủy phê duyệt'}
@@ -344,11 +397,19 @@ export function ScheduleView() {
         </DialogContent>
       </Dialog>
 
-      {employeesQuery.isLoading && <p className="text-sm text-muted-foreground">Đang tải danh sách nhân viên...</p>}
-       {employeesQuery.isError && (
-        <p className="text-sm text-destructive">Không tải được nhân viên: {errorMessage(employeesQuery.error)}</p>
-       )}
-       {configQuery.isError && <p className="text-sm text-destructive">Không tải được cấu hình cổng/ca: {errorMessage(configQuery.error)}</p>}
+      {employeesQuery.isLoading && (
+        <p className="text-sm text-muted-foreground">Đang tải danh sách nhân viên...</p>
+      )}
+      {employeesQuery.isError && (
+        <p className="text-sm text-destructive">
+          Không tải được nhân viên: {errorMessage(employeesQuery.error)}
+        </p>
+      )}
+      {configQuery.isError && (
+        <p className="text-sm text-destructive">
+          Không tải được cấu hình cổng/ca: {errorMessage(configQuery.error)}
+        </p>
+      )}
 
       {result && employeesQuery.data ? (
         <>
@@ -367,13 +428,15 @@ export function ScheduleView() {
                   <span className="inline-block size-3 rounded bg-status-dem" /> Đêm
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-3 rounded ring-2 ring-status-edited" /> Đã sửa tay (chưa lưu)
+                  <span className="inline-block size-3 rounded ring-2 ring-status-edited" /> Đã sửa
+                  tay (chưa lưu)
                 </span>
                 <span className="flex items-center gap-1.5">
                   <CircleCheckIcon className="size-3.5 text-status-approved" /> Đã duyệt
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-3 rounded border-b-2 border-destructive bg-destructive/5" /> Ngày thiếu ca
+                  <span className="inline-block size-3 rounded border-b-2 border-destructive bg-destructive/5" />{' '}
+                  Ngày thiếu ca
                 </span>
                 <span>Bấm vào một ô để sửa cổng/ca hoặc đặt Off.</span>
               </p>
@@ -398,7 +461,9 @@ export function ScheduleView() {
 
           <Card
             className={
-              result.shortages.length > 0 ? 'ring-2 ring-destructive/60 bg-destructive/5' : undefined
+              result.shortages.length > 0
+                ? 'ring-2 ring-destructive/60 bg-destructive/5'
+                : undefined
             }
           >
             <CardHeader>
@@ -408,7 +473,8 @@ export function ScheduleView() {
               </CardTitle>
               {result.shortages.length > 0 && (
                 <p className="text-sm text-destructive">
-                  Thiếu nhân sự khiến cổng không đủ người để hoạt động — cần xử lý trước khi phê duyệt lịch.
+                  Thiếu nhân sự khiến cổng không đủ người để hoạt động — cần xử lý trước khi phê
+                  duyệt lịch.
                 </p>
               )}
             </CardHeader>
@@ -427,8 +493,12 @@ export function ScheduleView() {
           </Card>
         </>
       ) : (
-        !solve.isPending && <p className="text-sm text-muted-foreground">Chưa có lịch nào — bấm Solve để tạo lịch đầu tiên.</p>
+        !solve.isPending && (
+          <p className="text-sm text-muted-foreground">
+            Chưa có lịch nào — bấm Solve để tạo lịch đầu tiên.
+          </p>
+        )
       )}
     </div>
-  )
+  );
 }

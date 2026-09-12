@@ -1,14 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { CapacityCheckPanel } from '@/components/capacity/CapacityCheckPanel'
-import { CandidatesPanel } from '@/components/candidates/CandidatesPanel'
-import { ConfigPanel } from '@/components/config/ConfigPanel'
-import { EmployeesPanel } from '@/components/employees/EmployeesPanel'
-import { WeeklyRegistrationView } from '@/components/registration/WeeklyRegistrationView'
-import { ScheduleView } from '@/components/schedule/ScheduleView'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Toaster } from '@/components/ui/sonner'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { CapacityCheckPanel } from '@/components/capacity/CapacityCheckPanel';
+import { CandidatesPanel } from '@/components/candidates/CandidatesPanel';
+import { ConfigPanel } from '@/components/config/ConfigPanel';
+import { EmployeesPanel } from '@/components/employees/EmployeesPanel';
+import { WeeklyRegistrationView } from '@/components/registration/WeeklyRegistrationView';
+import { ScheduleView } from '@/components/schedule/ScheduleView';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Toaster } from '@/components/ui/sonner';
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient();
 
 function App() {
   return (
@@ -17,7 +17,8 @@ function App() {
         <header>
           <h1 className="text-2xl font-semibold">Employee Scheduler — Demo</h1>
           <p className="text-sm text-muted-foreground">
-            Disclaimer: dữ liệu và môi trường demo dùng để test, sử dụng như gợi ý và so sánh lập lịch, sản phẩm chưa production ready
+            Disclaimer: dữ liệu và môi trường demo dùng để test, sử dụng như gợi ý và so sánh lập
+            lịch, sản phẩm chưa production ready
           </p>
         </header>
 
@@ -55,7 +56,7 @@ function App() {
       </div>
       <Toaster />
     </QueryClientProvider>
-  )
+  );
 }
 
-export default App
+export default App;

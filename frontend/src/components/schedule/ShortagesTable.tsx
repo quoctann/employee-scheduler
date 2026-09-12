@@ -1,11 +1,18 @@
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { formatShortDate } from '@/lib/dates'
-import type { ShortageItem } from '@/api/types'
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { formatShortDate } from '@/lib/dates';
+import type { ShortageItem } from '@/api/types';
 
 export function ShortagesTable({ shortages }: { shortages: ShortageItem[] }) {
   if (shortages.length === 0) {
-    return <p className="text-sm text-muted-foreground">Không thiếu ca nào cho kỳ này.</p>
+    return <p className="text-sm text-muted-foreground">Không thiếu ca nào cho kỳ này.</p>;
   }
 
   return (
@@ -29,12 +36,14 @@ export function ShortagesTable({ shortages }: { shortages: ShortageItem[] }) {
               {/* Both shortage types leave the gate unable to operate — a
                   missing rank-and-file NV is just as critical as a missing
                   lead, so both render as destructive, not just "lead". */}
-              <Badge variant="destructive">{s.shortage_type === 'lead' ? 'Thiếu lead' : 'Thiếu NV'}</Badge>
+              <Badge variant="destructive">
+                {s.shortage_type === 'lead' ? 'Thiếu lead' : 'Thiếu NV'}
+              </Badge>
             </TableCell>
             <TableCell className="text-right font-semibold text-destructive">{s.missing}</TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
-  )
+  );
 }

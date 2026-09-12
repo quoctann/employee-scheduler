@@ -1,43 +1,46 @@
-import { type FormEvent, useState } from 'react'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useCapacityCheck } from '@/api/hooks'
-import { errorMessage } from '@/lib/errors'
+import { type FormEvent, useState } from 'react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useCapacityCheck } from '@/api/hooks';
+import { errorMessage } from '@/lib/errors';
 
-const MIN_DAYS = 1
-const MAX_DAYS = 180
+const MIN_DAYS = 1;
+const MAX_DAYS = 180;
 
 function clampNumDays(raw: string): number {
-  const n = Math.floor(Number(raw))
-  if (!Number.isFinite(n)) return MIN_DAYS
-  return Math.min(MAX_DAYS, Math.max(MIN_DAYS, n))
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return MIN_DAYS;
+  return Math.min(MAX_DAYS, Math.max(MIN_DAYS, n));
 }
 
 /** Keeps "" (meaning "use the current roster size") but rejects negative numbers. */
 function clampEmployeeCount(raw: string): string {
-  if (raw === '') return ''
-  const n = Math.floor(Number(raw))
-  if (!Number.isFinite(n) || n < 0) return '0'
-  return String(n)
+  if (raw === '') return '';
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 0) return '0';
+  return String(n);
 }
 
 export function CapacityCheckPanel() {
-  const [numDays, setNumDays] = useState(28)
-  const [employeeCount, setEmployeeCount] = useState('')
-  const check = useCapacityCheck()
+  const [numDays, setNumDays] = useState(28);
+  const [employeeCount, setEmployeeCount] = useState('');
+  const check = useCapacityCheck();
 
   function handleCheck(e: FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     check.mutate(
-      { num_days: numDays, employee_count: employeeCount === '' ? undefined : Number(employeeCount) },
+      {
+        num_days: numDays,
+        employee_count: employeeCount === '' ? undefined : Number(employeeCount),
+      },
       { onError: (err) => toast.error(errorMessage(err)) },
-    )
+    );
   }
 
-  const result = check.data
+  const result = check.data;
 
   return (
     <div className="space-y-4">
@@ -60,7 +63,9 @@ export function CapacityCheckPanel() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="cap-employee-count">Số lượng nhân viên (để trống = dùng số hiện có)</Label>
+              <Label htmlFor="cap-employee-count">
+                Số lượng nhân viên (để trống = dùng số hiện có)
+              </Label>
               <Input
                 id="cap-employee-count"
                 type="number"
@@ -89,14 +94,17 @@ export function CapacityCheckPanel() {
             <Stat label="Giờ-người/ngày cần" value={result.demand_hours_per_day} />
             <Stat label="Tổng giờ-người cần" value={result.demand_hours_total} />
             <Stat label="Giờ mục tiêu/nhân viên" value={result.target_hours_per_employee} />
-            <Stat label="Số nhân viên cần tối thiểu" value={result.min_employees_required.toFixed(2)} />
+            <Stat
+              label="Số nhân viên cần tối thiểu"
+              value={result.min_employees_required.toFixed(2)}
+            />
             <Stat label="Số nhân viên hiện có" value={result.employee_count} />
             <Stat label="Tỷ lệ thiếu" value={`${(result.shortfall_ratio * 100).toFixed(1)}%`} />
           </CardContent>
         </Card>
       )}
     </div>
-  )
+  );
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -105,5 +113,5 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-lg font-semibold">{value}</p>
     </div>
-  )
+  );
 }
