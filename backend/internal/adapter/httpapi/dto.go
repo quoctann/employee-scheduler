@@ -1,17 +1,24 @@
 // Package httpapi is the inbound HTTP adapter: it translates the Go
 // backend's minimal REST contract into calls against the core services and
 // wraps every response in the same {success,data,error} envelope
-// solver-service uses. Named httpapi (not "http") to avoid shadowing the
-// stdlib net/http package this file imports.
+// solver-service uses.
 package httpapi
 
 import (
 	"encoding/json"
-	"log"
-	"net/http"
+
+	"github.com/labstack/echo/v4"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
 )
+
+// bindJSON decodes the request body as JSON regardless of its Content-Type
+// header (unlike echo.Context.Bind, which 415s without an
+// "application/json" Content-Type) — callers here are trusted internal
+// clients (the bundled frontend), not arbitrary browsers submitting forms.
+func bindJSON(c echo.Context, out any) error {
+	return json.NewDecoder(c.Request().Body).Decode(out)
+}
 
 type response[T any] struct {
 	Success bool    `json:"success"`
@@ -19,23 +26,12 @@ type response[T any] struct {
 	Error   *string `json:"error"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
-		// Headers are already flushed at this point, so nothing more useful
-		// than logging can be done — at least this response now shows up in
-		// logs as truncated/broken instead of silently failing.
-		log.Printf("write response body: %v", err)
-	}
+func writeOK[T any](c echo.Context, status int, data T) error {
+	return c.JSON(status, response[T]{Success: true, Data: &data})
 }
 
-func writeOK[T any](w http.ResponseWriter, status int, data T) {
-	writeJSON(w, status, response[T]{Success: true, Data: &data})
-}
-
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, response[any]{Success: false, Error: &msg})
+func writeError(c echo.Context, status int, msg string) error {
+	return c.JSON(status, response[any]{Success: false, Error: &msg})
 }
 
 // Request bodies reuse domain types directly (Date, TargetSlot,

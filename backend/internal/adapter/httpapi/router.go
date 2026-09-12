@@ -1,31 +1,68 @@
 package httpapi
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.uber.org/zap"
+
+	"github.com/tantq/employee-scheduler-backend/internal/platform/logging"
+)
 
 // NewRouter wires the minimal HTTP contract onto s and layers CORS, panic
-// recovery, and request logging around it. No auth — demo scope.
-func NewRouter(s *Server, corsOrigin string) http.Handler {
-	mux := http.NewServeMux()
+// recovery, tracing, and request logging around it. No auth — demo scope.
+func NewRouter(s *Server, corsOrigin string, logger *zap.Logger) http.Handler {
+	e := echo.New()
+	e.HideBanner = true
+	e.HTTPErrorHandler = newHTTPErrorHandler(logger)
 
-	mux.HandleFunc("GET /api/v1/health", handleHealth)
-	mux.HandleFunc("GET /api/v1/employees", s.handleGetEmployees)
-	mux.HandleFunc("POST /api/v1/employees", s.handleCreateEmployee)
-	mux.HandleFunc("PUT /api/v1/employees/{employee_id}", s.handleUpdateEmployee)
-	mux.HandleFunc("DELETE /api/v1/employees/{employee_id}", s.handleDeactivateEmployee)
-	mux.HandleFunc("POST /api/v1/employees/{employee_id}/restore", s.handleRestoreEmployee)
-	mux.HandleFunc("PUT /api/v1/employees/{employee_id}/availability", s.handleSetAvailability)
-	mux.HandleFunc("PUT /api/v1/employees/{employee_id}/leave", s.handleSetLeaveDay)
-	mux.HandleFunc("GET /api/v1/config", s.handleGetConfig)
-	mux.HandleFunc("PUT /api/v1/config/gates/{gate_code}/shifts/{shift_type}", s.handleUpdateGateShiftRequirement)
-	mux.HandleFunc("PUT /api/v1/config/gates/{gate_code}/rename", s.handleRenameGate)
-	mux.HandleFunc("POST /api/v1/schedule/solve", s.handleSolve)
-	mux.HandleFunc("GET /api/v1/schedule/latest", s.handleLatestSchedule)
-	mux.HandleFunc("POST /api/v1/schedule/approve", s.handleApprove)
-	mux.HandleFunc("POST /api/v1/schedule/unapprove", s.handleUnapprove)
-	mux.HandleFunc("GET /api/v1/schedule/approved", s.handleListApproved)
-	mux.HandleFunc("GET /api/v1/schedule/export", s.handleExportSchedule)
-	mux.HandleFunc("POST /api/v1/capacity-check", s.handleCapacityCheck)
-	mux.HandleFunc("POST /api/v1/candidates", s.handleCandidates)
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{corsOrigin},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{echo.HeaderContentType},
+	}))
+	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+			logger.Error("panic",
+				zap.String("method", c.Request().Method),
+				zap.String("path", c.Path()),
+				zap.Error(err),
+				zap.ByteString("stack", stack),
+			)
+			return writeError(c, http.StatusInternalServerError, "internal server error")
+		},
+	}))
+	e.Use(otelecho.Middleware("employee-scheduler-backend"))
+	e.Use(logging.Middleware(logger))
+	e.Use(middleware.BodyLimit(maxRequestBodySize))
 
-	return withCORS(withRecover(withLogging(mux)), corsOrigin)
+	g := e.Group("/api/v1")
+	g.GET("/health", handleHealth)
+
+	g.GET("/employees", s.handleGetEmployees)
+	g.POST("/employees", s.handleCreateEmployee)
+	g.PUT("/employees/:employee_id", s.handleUpdateEmployee)
+	g.DELETE("/employees/:employee_id", s.handleDeactivateEmployee)
+	g.POST("/employees/:employee_id/restore", s.handleRestoreEmployee)
+	g.PUT("/employees/:employee_id/availability", s.handleSetAvailability)
+	g.PUT("/employees/:employee_id/leave", s.handleSetLeaveDay)
+
+	g.GET("/config", s.handleGetConfig)
+	g.PUT("/config/gates/:gate_code/shifts/:shift_type", s.handleUpdateGateShiftRequirement)
+	g.PUT("/config/gates/:gate_code/rename", s.handleRenameGate)
+
+	g.POST("/schedule/solve", s.handleSolve)
+	g.GET("/schedule/latest", s.handleLatestSchedule)
+	g.POST("/schedule/approve", s.handleApprove)
+	g.POST("/schedule/unapprove", s.handleUnapprove)
+	g.GET("/schedule/approved", s.handleListApproved)
+	g.GET("/schedule/export", s.handleExportSchedule)
+
+	g.POST("/capacity-check", s.handleCapacityCheck)
+
+	g.POST("/candidates", s.handleCandidates)
+
+	return e
 }

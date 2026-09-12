@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"errors"
-	"log"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
 	"github.com/tantq/employee-scheduler-backend/internal/core/service"
@@ -31,13 +33,37 @@ func statusForError(err error) int {
 	return http.StatusInternalServerError
 }
 
-func handleError(w http.ResponseWriter, err error) {
+func handleError(c echo.Context, logger *zap.Logger, err error) error {
 	status := statusForError(err)
 	var solverErr *solverclient.APIError
 	if status >= http.StatusInternalServerError && !errors.As(err, &solverErr) {
-		log.Printf("request failed: %v", err)
-		writeError(w, status, "internal server error")
-		return
+		logger.Error("request failed", zap.Error(err))
+		return writeError(c, status, "internal server error")
 	}
-	writeError(w, status, err.Error())
+	return writeError(c, status, err.Error())
+}
+
+// newHTTPErrorHandler keeps the {success,data,error} envelope for errors
+// Echo itself produces (e.g. 404 on an unmatched route, 405 on a wrong
+// method) instead of Echo's default plain-text/JSON error shape.
+func newHTTPErrorHandler(logger *zap.Logger) echo.HTTPErrorHandler {
+	return func(err error, c echo.Context) {
+		if c.Response().Committed {
+			return
+		}
+		status := http.StatusInternalServerError
+		msg := "internal server error"
+		var httpErr *echo.HTTPError
+		if errors.As(err, &httpErr) {
+			status = httpErr.Code
+			if s, ok := httpErr.Message.(string); ok {
+				msg = s
+			}
+		} else {
+			logger.Error("unhandled error", zap.Error(err))
+		}
+		if writeErr := writeError(c, status, msg); writeErr != nil {
+			logger.Error("write error response", zap.Error(writeErr))
+		}
+	}
 }

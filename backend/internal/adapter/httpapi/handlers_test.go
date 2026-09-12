@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.uber.org/zap"
+
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/httpapi"
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
 	"github.com/tantq/employee-scheduler-backend/internal/adapter/xlsxexport"
@@ -40,8 +42,9 @@ func newTestServer(t *testing.T, solver *fakeSolverGateway, empRepo *fakeEmploye
 		Capacity:   service.NewCapacityService(solver, empRepo, cfgRepo),
 		Candidates: service.NewCandidateService(solver, empRepo, cfgRepo, schedRepo),
 		Export:     service.NewExportService(empRepo, cfgRepo, schedRepo, xlsxexport.New()),
+		Logger:     zap.NewNop(),
 	}
-	return httpapi.NewRouter(s, "http://localhost:5173")
+	return httpapi.NewRouter(s, "http://localhost:5173", zap.NewNop())
 }
 
 type envelope struct {
@@ -513,6 +516,8 @@ func TestHandleRenameGate_ExistingNewCode_Returns409(t *testing.T) {
 func TestCORSPreflight_ReturnsNoContentWithHeaders(t *testing.T) {
 	router := newTestServer(t, nil, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/schedule/solve", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

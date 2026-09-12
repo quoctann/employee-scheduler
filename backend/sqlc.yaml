@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "db/queries"
+    schema: "migrations/*.up.sql"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/adapter/postgres/sqlc"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "date"
+            go_type: "time.Time"

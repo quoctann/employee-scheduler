@@ -19,7 +19,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 		t.Skip("TEST_DATABASE_URL not set; skipping Postgres integration test")
 	}
 
-	pool, err := NewPool(context.Background(), url)
+	pool, err := NewPool(context.Background(), url, nil)
 	if err != nil {
 		t.Fatalf("connect to TEST_DATABASE_URL: %v", err)
 	}

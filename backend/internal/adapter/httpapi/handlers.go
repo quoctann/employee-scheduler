@@ -1,19 +1,27 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
 	"github.com/tantq/employee-scheduler-backend/internal/core/service"
 )
 
-// Server holds the core services the HTTP handlers dispatch to. It has no
-// dependency on any adapter (Postgres, solverclient) — only on `service`.
+// maxRequestBodySize bounds request bodies as a basic resource-exhaustion
+// guard, independent of the (intentionally out of scope for this demo)
+// auth/rate-limiting layer. Matches solver-service's own MAX_BODY_BYTES default.
+const maxRequestBodySize = "10M"
+
+// Server holds the core services the HTTP handlers dispatch to, plus the
+// logger used for error/panic logging. It has no dependency on any adapter
+// (Postgres, solverclient) beyond that — only on `service`.
 type Server struct {
+	Logger     *zap.Logger
 	Employees  *service.EmployeeService
 	Config     *service.ConfigService
 	Schedule   *service.ScheduleService
@@ -23,129 +31,121 @@ type Server struct {
 	Export     *service.ExportService
 }
 
-func handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeOK(w, http.StatusOK, map[string]string{"status": "ok"})
+func (s *Server) handleErr(c echo.Context, err error) error {
+	return handleError(c, s.Logger, err)
 }
 
-func (s *Server) handleGetEmployees(w http.ResponseWriter, r *http.Request) {
-	includeInactive, err := parseIncludeInactive(r)
+func handleHealth(c echo.Context) error {
+	return writeOK(c, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleGetEmployees(c echo.Context) error {
+	includeInactive, err := parseIncludeInactive(c)
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	from, err := parseOptionalDate(r, "from")
+	from, err := parseOptionalDate(c, "from")
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	to, err := parseOptionalDate(r, "to")
+	to, err := parseOptionalDate(c, "to")
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
 	if !from.Time.IsZero() && !to.Time.IsZero() && to.Time.Before(from.Time) {
-		handleError(w, fmt.Errorf("%w: to must not be before from", service.ErrInvalidInput))
-		return
+		return s.handleErr(c, fmt.Errorf("%w: to must not be before from", service.ErrInvalidInput))
 	}
-	employees, availability, err := s.Employees.Roster(r.Context(), includeInactive, from, to)
+	employees, availability, err := s.Employees.Roster(c.Request().Context(), includeInactive, from, to)
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, employeesResponseBody{Employees: employees, Availability: availability})
+	return writeOK(c, http.StatusOK, employeesResponseBody{Employees: employees, Availability: availability})
 }
 
-func (s *Server) handleCreateEmployee(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateEmployee(c echo.Context) error {
 	var body createEmployeeRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	employee, err := s.Employees.Create(r.Context(), domain.Employee{
+	employee, err := s.Employees.Create(c.Request().Context(), domain.Employee{
 		EmployeeID: body.EmployeeID,
 		Name:       body.Name,
 		Role:       body.Role,
 	})
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusCreated, employee)
+	return writeOK(c, http.StatusCreated, employee)
 }
 
-func (s *Server) handleUpdateEmployee(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUpdateEmployee(c echo.Context) error {
 	var body updateEmployeeRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	employee, err := s.Employees.Update(r.Context(), r.PathValue("employee_id"), body.Name, body.Role)
+	employee, err := s.Employees.Update(c.Request().Context(), c.Param("employee_id"), body.Name, body.Role)
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, employee)
+	return writeOK(c, http.StatusOK, employee)
 }
 
-func (s *Server) handleDeactivateEmployee(w http.ResponseWriter, r *http.Request) {
-	employee, err := s.Employees.Deactivate(r.Context(), r.PathValue("employee_id"))
+func (s *Server) handleDeactivateEmployee(c echo.Context) error {
+	employee, err := s.Employees.Deactivate(c.Request().Context(), c.Param("employee_id"))
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, employee)
+	return writeOK(c, http.StatusOK, employee)
 }
 
-func (s *Server) handleRestoreEmployee(w http.ResponseWriter, r *http.Request) {
-	employee, err := s.Employees.Restore(r.Context(), r.PathValue("employee_id"))
+func (s *Server) handleRestoreEmployee(c echo.Context) error {
+	employee, err := s.Employees.Restore(c.Request().Context(), c.Param("employee_id"))
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, employee)
+	return writeOK(c, http.StatusOK, employee)
 }
 
-func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	config, err := s.Config.Get(r.Context())
+func (s *Server) handleGetConfig(c echo.Context) error {
+	config, err := s.Config.Get(c.Request().Context())
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, config)
+	return writeOK(c, http.StatusOK, config)
 }
 
-func (s *Server) handleUpdateGateShiftRequirement(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUpdateGateShiftRequirement(c echo.Context) error {
 	var body updateGateShiftRequirementRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
 	config, err := s.Config.UpdateGateShiftRequirement(
-		r.Context(),
-		r.PathValue("gate_code"),
-		domain.ShiftType(r.PathValue("shift_type")),
+		c.Request().Context(),
+		c.Param("gate_code"),
+		domain.ShiftType(c.Param("shift_type")),
 		domain.GateShiftRequirement{NV: body.NV, Lead: body.Lead, LeadMandatoryRole: body.LeadMandatoryRole},
 		body.ShiftHours,
 	)
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, config)
+	return writeOK(c, http.StatusOK, config)
 }
 
-func (s *Server) handleRenameGate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRenameGate(c echo.Context) error {
 	var body renameGateRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	config, err := s.Config.RenameGate(r.Context(), r.PathValue("gate_code"), body.NewCode)
+	config, err := s.Config.RenameGate(c.Request().Context(), c.Param("gate_code"), body.NewCode)
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, config)
+	return writeOK(c, http.StatusOK, config)
 }
 
-func parseIncludeInactive(r *http.Request) (bool, error) {
-	raw := r.URL.Query().Get("include_inactive")
+func parseIncludeInactive(c echo.Context) (bool, error) {
+	raw := c.QueryParam("include_inactive")
 	if raw == "" {
 		return false, nil
 	}
@@ -158,8 +158,8 @@ func parseIncludeInactive(r *http.Request) (bool, error) {
 
 // parseOptionalDate reads a "YYYY-MM-DD" query param, returning the zero
 // Date (meaning "use the caller's default") when absent.
-func parseOptionalDate(r *http.Request, name string) (domain.Date, error) {
-	raw := r.URL.Query().Get(name)
+func parseOptionalDate(c echo.Context, name string) (domain.Date, error) {
+	raw := c.QueryParam(name)
 	if raw == "" {
 		return domain.Date{}, nil
 	}
@@ -170,183 +170,149 @@ func parseOptionalDate(r *http.Request, name string) (domain.Date, error) {
 	return date, nil
 }
 
-func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSolve(c echo.Context) error {
 	var body solveRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	result, err := s.Schedule.Solve(r.Context(), service.SolveParams{
+	result, err := s.Schedule.Solve(c.Request().Context(), service.SolveParams{
 		StartDate:      body.StartDate,
 		NumDays:        body.NumDays,
 		TimeLimitS:     body.TimeLimitS,
 		IgnoreApproved: body.IgnoreApproved,
 	})
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, result)
+	return writeOK(c, http.StatusOK, result)
 }
 
-func (s *Server) handleLatestSchedule(w http.ResponseWriter, r *http.Request) {
-	result, found, err := s.Schedule.Latest(r.Context())
+func (s *Server) handleLatestSchedule(c echo.Context) error {
+	result, found, err := s.Schedule.Latest(c.Request().Context())
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
 	body := latestScheduleResponseBody{Found: found}
 	if found {
 		body.Result = &result
 	}
-	writeOK(w, http.StatusOK, body)
+	return writeOK(c, http.StatusOK, body)
 }
 
-func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleApprove(c echo.Context) error {
 	var body approveRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	count, err := s.Approve.Approve(r.Context(), body.Assignments)
+	count, err := s.Approve.Approve(c.Request().Context(), body.Assignments)
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, approveResponseBody{ApprovedCount: count})
+	return writeOK(c, http.StatusOK, approveResponseBody{ApprovedCount: count})
 }
 
-func (s *Server) handleUnapprove(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUnapprove(c echo.Context) error {
 	var body unapproveRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	count, err := s.Approve.Unapprove(r.Context(), service.HorizonParams{
+	count, err := s.Approve.Unapprove(c.Request().Context(), service.HorizonParams{
 		StartDate: body.StartDate,
 		NumDays:   body.NumDays,
 	})
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, unapproveResponseBody{UnapprovedCount: count})
+	return writeOK(c, http.StatusOK, unapproveResponseBody{UnapprovedCount: count})
 }
 
-func (s *Server) handleListApproved(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("start_date")
+func (s *Server) handleListApproved(c echo.Context) error {
+	raw := c.QueryParam("start_date")
 	if raw == "" {
-		handleError(w, fmt.Errorf("%w: start_date is required", service.ErrInvalidInput))
-		return
+		return s.handleErr(c, fmt.Errorf("%w: start_date is required", service.ErrInvalidInput))
 	}
 	startDate, err := domain.ParseDate(raw)
 	if err != nil {
-		handleError(w, fmt.Errorf("%w: start_date must be a YYYY-MM-DD date", service.ErrInvalidInput))
-		return
+		return s.handleErr(c, fmt.Errorf("%w: start_date must be a YYYY-MM-DD date", service.ErrInvalidInput))
 	}
-	numDays, err := strconv.Atoi(r.URL.Query().Get("num_days"))
+	numDays, err := strconv.Atoi(c.QueryParam("num_days"))
 	if err != nil {
-		handleError(w, fmt.Errorf("%w: num_days must be an integer", service.ErrInvalidInput))
-		return
+		return s.handleErr(c, fmt.Errorf("%w: num_days must be an integer", service.ErrInvalidInput))
 	}
-	assignments, err := s.Approve.ListApproved(r.Context(), service.HorizonParams{
+	assignments, err := s.Approve.ListApproved(c.Request().Context(), service.HorizonParams{
 		StartDate: startDate,
 		NumDays:   numDays,
 	})
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, listApprovedResponseBody{Assignments: assignments})
+	return writeOK(c, http.StatusOK, listApprovedResponseBody{Assignments: assignments})
 }
 
 // handleExportSchedule is the only endpoint that doesn't use the
 // {success,data,error} JSON envelope — it streams a binary .xlsx workbook
 // instead. Errors still go through handleError, so a missing schedule (or
 // any other failure) still comes back as the usual JSON error envelope.
-func (s *Server) handleExportSchedule(w http.ResponseWriter, r *http.Request) {
-	fileBytes, filename, err := s.Export.Export(r.Context())
+func (s *Server) handleExportSchedule(c echo.Context) error {
+	fileBytes, filename, err := s.Export.Export(c.Request().Context())
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	w.Header().Set("Content-Length", strconv.Itoa(len(fileBytes)))
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(fileBytes); err != nil {
-		log.Printf("write export response: %v", err)
-	}
+	c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf("attachment; filename=%q", filename))
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileBytes)
 }
 
-func (s *Server) handleCapacityCheck(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCapacityCheck(c echo.Context) error {
 	var body capacityCheckRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	result, err := s.Capacity.Check(r.Context(), service.CapacityParams{
+	result, err := s.Capacity.Check(c.Request().Context(), service.CapacityParams{
 		NumDays:       body.NumDays,
 		EmployeeCount: body.EmployeeCount,
 	})
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, result)
+	return writeOK(c, http.StatusOK, result)
 }
 
-func (s *Server) handleSetAvailability(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSetAvailability(c echo.Context) error {
 	var body setAvailabilityRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	employeeID := r.PathValue("employee_id")
-	if err := s.Employees.SetAvailability(r.Context(), employeeID, body.Date, body.ShiftAvailability); err != nil {
-		handleError(w, err)
-		return
+	employeeID := c.Param("employee_id")
+	if err := s.Employees.SetAvailability(c.Request().Context(), employeeID, body.Date, body.ShiftAvailability); err != nil {
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, ackResponseBody{OK: true})
+	return writeOK(c, http.StatusOK, ackResponseBody{OK: true})
 }
 
-func (s *Server) handleSetLeaveDay(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSetLeaveDay(c echo.Context) error {
 	var body setLeaveDayRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	employeeID := r.PathValue("employee_id")
-	if err := s.Employees.SetLeaveDay(r.Context(), employeeID, body.Date, body.OnLeave); err != nil {
-		handleError(w, err)
-		return
+	employeeID := c.Param("employee_id")
+	if err := s.Employees.SetLeaveDay(c.Request().Context(), employeeID, body.Date, body.OnLeave); err != nil {
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, ackResponseBody{OK: true})
+	return writeOK(c, http.StatusOK, ackResponseBody{OK: true})
 }
 
-func (s *Server) handleCandidates(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCandidates(c echo.Context) error {
 	var body candidatesRequestBody
-	if !decodeJSON(w, r, &body) {
-		return
+	if err := bindJSON(c, &body); err != nil {
+		return writeError(c, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 	}
-	result, err := s.Candidates.Suggest(r.Context(), service.CandidateParams{
+	result, err := s.Candidates.Suggest(c.Request().Context(), service.CandidateParams{
 		TargetSlot:         body.TargetSlot,
 		ExcludedEmployeeID: body.ExcludedEmployeeID,
 		TopN:               body.TopN,
 	})
 	if err != nil {
-		handleError(w, err)
-		return
+		return s.handleErr(c, err)
 	}
-	writeOK(w, http.StatusOK, result)
-}
-
-// maxRequestBodyBytes bounds request bodies as a basic resource-exhaustion
-// guard, independent of the (intentionally out of scope for this demo)
-// auth/rate-limiting layer. Matches solver-service's own MAX_BODY_BYTES default.
-const maxRequestBodyBytes = 10 << 20 // 10 MiB
-
-// decodeJSON writes a 400 envelope and returns false on failure, so handlers
-// can bail out in one line.
-func decodeJSON(w http.ResponseWriter, r *http.Request, out any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(out); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
-		return false
-	}
-	return true
+	return writeOK(c, http.StatusOK, result)
 }

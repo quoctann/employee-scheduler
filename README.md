@@ -24,12 +24,15 @@ The solver is an internal service: all `/api/v1/*` requests require an
 
 ## Prerequisites
 
-- Go `1.25.6`
+- Go `1.27`
 - Python `3.11+` and [uv](https://docs.astral.sh/uv/)
 - Node.js `22` and npm
 - PostgreSQL plus the `psql` client
-- [golang-migrate](https://github.com/golang-migrate/migrate) for database migrations
 - Docker (optional, for database setup and container builds)
+
+Database migrations are embedded in the backend binary (via
+[golang-migrate](https://github.com/golang-migrate/migrate) as a library, not
+a separate CLI) — no extra migration tool to install.
 
 ## Local Setup
 
@@ -40,11 +43,7 @@ Run all commands in this section from the project root unless noted otherwise.
 ```bash
 cd solver-service && uv sync && cd ..
 cd frontend && npm ci && cd ..
-make migrate-install
 ```
-
-`make migrate-install` installs the `migrate` CLI into your Go binary path and
-only needs to be run once.
 
 ### 2. Configure environment variables
 
@@ -88,6 +87,11 @@ limit. Enable API docs only in a trusted development environment.
 | `SOLVER_BASE_URL` | `http://localhost:8080` | Solver service URL |
 | `HTTP_PORT` | `8081` | Backend HTTP port |
 | `CORS_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
+| `LOG_LEVEL` | `info` | zap log level (debug/info/warn/error) |
+| `DB_AUTO_MIGRATE` | `false` | Run embedded migrations automatically at startup |
+| `OTEL_SDK_DISABLED` | `false` | Disable OpenTelemetry tracing entirely |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `lgtm.observability.svc:4317` | OTLP/gRPC endpoint (LGTM stack) |
+| `OTEL_SERVICE_NAME` | `employee-scheduler-backend` | Service name reported to traces |
 
 #### Frontend configuration
 
@@ -105,12 +109,18 @@ make db-create
 ```
 
 Alternatively, create `employee_scheduler` with your preferred PostgreSQL
-tool. Then apply the migrations with a URL-encoded password:
+tool. Then apply the migrations (embedded in the backend binary) with a
+URL-encoded password:
 
 ```bash
 export DATABASE_URL='postgres://postgres:<encoded-password>@localhost:5432/employee_scheduler?sslmode=disable'
-make migrate-up
+make backend-migrate-up
 ```
+
+This runs `go run ./cmd/api migrate up` under the hood — see
+`make backend-migrate-down` / `make backend-migrate-version` for the other
+manual ops, or set `DB_AUTO_MIGRATE=true` to have the server apply pending
+migrations automatically on startup instead.
 
 Migrations create only the schema. Load the optional development dataset with:
 

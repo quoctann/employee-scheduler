@@ -22,13 +22,16 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func New(baseURL, apiKey string) *Client {
+// New builds a Client. transport, when non-nil, wraps the outbound HTTP
+// requests (e.g. otelhttp.NewTransport, so a solve request's trace spans
+// backend -> solver-service).
+func New(baseURL, apiKey string, transport http.RoundTripper) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		// Solves can legitimately run close to MAX_TIME_LIMIT_S plus queueing
 		// behind solver-service's concurrency semaphore.
-		httpClient: &http.Client{Timeout: 5 * time.Minute},
+		httpClient: &http.Client{Timeout: 5 * time.Minute, Transport: transport},
 	}
 }
 

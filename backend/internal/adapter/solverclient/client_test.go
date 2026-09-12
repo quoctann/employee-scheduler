@@ -35,7 +35,7 @@ func TestClient_Solve_SendsExpectedRequestAndDecodesResult(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "test-key")
+	client := New(server.URL, "test-key", nil)
 
 	// Deliberately pass nil slices/maps to verify they're normalized to `[]`/`{}`
 	// rather than JSON `null`, which solver-service's required fields reject.
@@ -87,7 +87,7 @@ func TestClient_Solve_ReturnsAPIErrorOnFailureEnvelope(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "test-key")
+	client := New(server.URL, "test-key", nil)
 	_, err := client.Solve(context.Background(), port.SolveRequest{StartDate: mustDate(t, "2026-09-07"), NumDays: 1})
 
 	var apiErr *APIError
@@ -111,7 +111,7 @@ func TestClient_CapacityCheck_DecodesResultDirectly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "test-key")
+	client := New(server.URL, "test-key", nil)
 	result, err := client.CapacityCheck(context.Background(), port.CapacityCheckRequest{NumDays: 28, EmployeeCount: 21})
 	if err != nil {
 		t.Fatalf("CapacityCheck() error = %v", err)

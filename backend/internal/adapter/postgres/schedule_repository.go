@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	sqlcgen "github.com/tantq/employee-scheduler-backend/internal/adapter/postgres/sqlc"
 	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
 	"github.com/tantq/employee-scheduler-backend/internal/core/port"
 )
@@ -17,18 +18,22 @@ import (
 const approvedBy = "demo-user"
 
 type ScheduleRepository struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *sqlcgen.Queries
 }
 
 func NewScheduleRepository(pool *pgxpool.Pool) *ScheduleRepository {
-	return &ScheduleRepository{pool: pool}
+	return &ScheduleRepository{pool: pool, queries: sqlcgen.New(pool)}
 }
 
 var _ port.ScheduleRepository = (*ScheduleRepository)(nil)
 
 // SaveRun persists a solve result as a new, immutable row set: one
 // schedule_runs row plus its assignments/shortages/employee_summary, all in
-// one transaction so a partial write can never be read back.
+// one transaction so a partial write can never be read back. The header row
+// goes through sqlc; the three child-table inserts stay hand-written
+// pgx.Batch (a dynamic-length, no-conflict bulk insert sqlc doesn't
+// generate cleanly).
 func (r *ScheduleRepository) SaveRun(ctx context.Context, result domain.SolveResult) (int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -36,12 +41,13 @@ func (r *ScheduleRepository) SaveRun(ctx context.Context, result domain.SolveRes
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
-	var runID int64
-	err = tx.QueryRow(ctx, `
-		INSERT INTO schedule_runs (start_date, num_days, status, objective_value, wall_time_s)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`, result.StartDate.Time, result.NumDays, string(result.Status), result.ObjectiveValue, result.WallTimeS).Scan(&runID)
+	runID, err := r.queries.WithTx(tx).InsertScheduleRun(ctx, sqlcgen.InsertScheduleRunParams{
+		StartDate:      result.StartDate.Time,
+		NumDays:        int32(result.NumDays),
+		Status:         string(result.Status),
+		ObjectiveValue: result.ObjectiveValue,
+		WallTimeS:      result.WallTimeS,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("insert schedule_runs: %w", err)
 	}
@@ -98,99 +104,70 @@ func execBatch(ctx context.Context, tx pgx.Tx, batch *pgx.Batch) error {
 
 // LatestRun returns the most recently saved run (by created_at), if any.
 func (r *ScheduleRepository) LatestRun(ctx context.Context) (domain.SolveResult, bool, error) {
-	var result domain.SolveResult
-	row := r.pool.QueryRow(ctx, `
-		SELECT id, start_date, num_days, status, objective_value, wall_time_s
-		FROM schedule_runs
-		ORDER BY created_at DESC
-		LIMIT 1
-	`)
-	var status string
-	if err := row.Scan(&result.RunID, &result.StartDate.Time, &result.NumDays, &status, &result.ObjectiveValue, &result.WallTimeS); err != nil {
+	header, err := r.queries.GetLatestScheduleRun(ctx)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.SolveResult{}, false, nil
 		}
 		return domain.SolveResult{}, false, fmt.Errorf("query latest schedule_run: %w", err)
 	}
-	result.Status = domain.SolveStatus(status)
-	// Pre-allocate as empty (not nil) so JSON encodes `[]`, matching what a
-	// fresh solverclient response always contains — GET /schedule/latest and
-	// POST /schedule/solve must not disagree on null-vs-empty for the same field.
-	result.Schedule = []domain.ScheduleEntry{}
-	result.Shortages = []domain.ShortageItem{}
-	result.EmployeeSummary = []domain.EmployeeSummary{}
 
-	assignmentRows, err := r.pool.Query(ctx, `
-		SELECT employee_id, assignment_date, gate, shift
-		FROM schedule_assignments
-		WHERE schedule_run_id = $1
-		ORDER BY employee_id, assignment_date
-	`, result.RunID)
+	result := domain.SolveResult{
+		RunID:          header.ID,
+		StartDate:      domain.Date{Time: header.StartDate},
+		NumDays:        int(header.NumDays),
+		Status:         domain.SolveStatus(header.Status),
+		ObjectiveValue: header.ObjectiveValue,
+		WallTimeS:      header.WallTimeS,
+		// Pre-allocated as empty (not nil) so JSON encodes `[]`, matching what
+		// a fresh solverclient response always contains — GET /schedule/latest
+		// and POST /schedule/solve must not disagree on null-vs-empty.
+		Schedule:        []domain.ScheduleEntry{},
+		Shortages:       []domain.ShortageItem{},
+		EmployeeSummary: []domain.EmployeeSummary{},
+	}
+
+	assignments, err := r.queries.ListScheduleAssignmentsByRun(ctx, header.ID)
 	if err != nil {
 		return domain.SolveResult{}, false, fmt.Errorf("query schedule_assignments: %w", err)
 	}
-	for assignmentRows.Next() {
-		var e domain.ScheduleEntry
-		var shift string
-		if err := assignmentRows.Scan(&e.EmployeeID, &e.Date.Time, &e.Gate, &shift); err != nil {
-			assignmentRows.Close()
-			return domain.SolveResult{}, false, fmt.Errorf("scan schedule_assignment: %w", err)
-		}
-		e.Shift = domain.ShiftType(shift)
-		result.Schedule = append(result.Schedule, e)
-	}
-	assignmentRows.Close()
-	if err := assignmentRows.Err(); err != nil {
-		return domain.SolveResult{}, false, fmt.Errorf("iterate schedule_assignments: %w", err)
+	for _, a := range assignments {
+		result.Schedule = append(result.Schedule, domain.ScheduleEntry{
+			EmployeeID: a.EmployeeID,
+			Date:       domain.Date{Time: a.AssignmentDate},
+			Gate:       a.Gate,
+			Shift:      domain.ShiftType(a.Shift),
+		})
 	}
 
-	shortageRows, err := r.pool.Query(ctx, `
-		SELECT shortage_date, gate, shift, shortage_type, missing
-		FROM schedule_shortages
-		WHERE schedule_run_id = $1
-		ORDER BY shortage_date, gate, shift
-	`, result.RunID)
+	shortages, err := r.queries.ListScheduleShortagesByRun(ctx, header.ID)
 	if err != nil {
 		return domain.SolveResult{}, false, fmt.Errorf("query schedule_shortages: %w", err)
 	}
-	for shortageRows.Next() {
-		var s domain.ShortageItem
-		var shift, shortageType string
-		if err := shortageRows.Scan(&s.Date.Time, &s.Gate, &shift, &shortageType, &s.Missing); err != nil {
-			shortageRows.Close()
-			return domain.SolveResult{}, false, fmt.Errorf("scan schedule_shortage: %w", err)
-		}
-		s.Shift = domain.ShiftType(shift)
-		s.ShortageType = domain.ShortageType(shortageType)
-		result.Shortages = append(result.Shortages, s)
-	}
-	shortageRows.Close()
-	if err := shortageRows.Err(); err != nil {
-		return domain.SolveResult{}, false, fmt.Errorf("iterate schedule_shortages: %w", err)
+	for _, s := range shortages {
+		result.Shortages = append(result.Shortages, domain.ShortageItem{
+			Date:         domain.Date{Time: s.ShortageDate},
+			Gate:         s.Gate,
+			Shift:        domain.ShiftType(s.Shift),
+			ShortageType: domain.ShortageType(s.ShortageType),
+			Missing:      int(s.Missing),
+		})
 	}
 
-	summaryRows, err := r.pool.Query(ctx, `
-		SELECT employee_id, role, leave_days, target_hours, actual_hours, deviation_hours, actual_shifts
-		FROM schedule_employee_summary
-		WHERE schedule_run_id = $1
-		ORDER BY employee_id
-	`, result.RunID)
+	summaries, err := r.queries.ListScheduleEmployeeSummaryByRun(ctx, header.ID)
 	if err != nil {
 		return domain.SolveResult{}, false, fmt.Errorf("query schedule_employee_summary: %w", err)
 	}
-	for summaryRows.Next() {
-		var s domain.EmployeeSummary
-		var role string
-		if err := summaryRows.Scan(&s.EmployeeID, &role, &s.LeaveDays, &s.TargetHours, &s.ActualHours, &s.DeviationHours, &s.ActualShifts); err != nil {
-			summaryRows.Close()
-			return domain.SolveResult{}, false, fmt.Errorf("scan schedule_employee_summary: %w", err)
-		}
-		s.Role = domain.Role(role)
-		result.EmployeeSummary = append(result.EmployeeSummary, s)
-	}
-	summaryRows.Close()
-	if err := summaryRows.Err(); err != nil {
-		return domain.SolveResult{}, false, fmt.Errorf("iterate schedule_employee_summary: %w", err)
+	for _, s := range summaries {
+		result.EmployeeSummary = append(result.EmployeeSummary, domain.EmployeeSummary{
+			EmployeeID:     s.EmployeeID,
+			Role:           domain.Role(s.Role),
+			LeaveDays:      int(s.LeaveDays),
+			TargetHours:    int(s.TargetHours),
+			ActualHours:    int(s.ActualHours),
+			DeviationHours: int(s.DeviationHours),
+			ActualShifts:   int(s.ActualShifts),
+		})
 	}
 
 	return result, true, nil
@@ -203,56 +180,29 @@ func (r *ScheduleRepository) LatestRun(ctx context.Context) (domain.SolveResult,
 // discard a manager's confirmed "nobody works nights that day" in favor of
 // stale solver output — a legitimately-empty approved set must still win.
 func (r *ScheduleRepository) CarryIn(ctx context.Context, beforeDate domain.Date) (domain.CarryIn, error) {
-	var hasApproved bool
-	err := r.pool.QueryRow(ctx, `
-		SELECT EXISTS(SELECT 1 FROM approved_assignments WHERE assignment_date = $1)
-	`, beforeDate.Time).Scan(&hasApproved)
+	hasApproved, err := r.queries.HasApprovedAssignmentsOnDate(ctx, beforeDate.Time)
 	if err != nil {
 		return domain.CarryIn{}, fmt.Errorf("check approved_assignments existence: %w", err)
 	}
 
 	if hasApproved {
-		approvedIDs, err := r.queryEmployeeIDs(ctx, `
-			SELECT employee_id FROM approved_assignments
-			WHERE assignment_date = $1 AND shift = 'dem' AND NOT off
-		`, beforeDate.Time)
+		approvedIDs, err := r.queries.ListApprovedNightWorkers(ctx, beforeDate.Time)
 		if err != nil {
 			return domain.CarryIn{}, fmt.Errorf("query approved carry-in: %w", err)
 		}
 		return domain.CarryIn{WorkedNightBeforeStart: approvedIDs}, nil
 	}
 
-	fallbackIDs, err := r.queryEmployeeIDs(ctx, `
-		SELECT sa.employee_id
-		FROM schedule_assignments sa
-		WHERE sa.assignment_date = $1 AND sa.shift = 'dem'
-		  AND sa.schedule_run_id = (SELECT id FROM schedule_runs ORDER BY created_at DESC LIMIT 1)
-	`, beforeDate.Time)
+	fallbackIDs, err := r.queries.ListFallbackNightWorkers(ctx, beforeDate.Time)
 	if err != nil {
 		return domain.CarryIn{}, fmt.Errorf("query fallback carry-in: %w", err)
 	}
 	return domain.CarryIn{WorkedNightBeforeStart: fallbackIDs}, nil
 }
 
-func (r *ScheduleRepository) queryEmployeeIDs(ctx context.Context, sql string, args ...any) ([]string, error) {
-	rows, err := r.pool.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-// ApproveAssignments upserts the manager-confirmed state for each cell.
+// ApproveAssignments upserts the manager-confirmed state for each cell. Kept
+// as hand-written pgx.Batch (a dynamic-length, per-row ON CONFLICT DO UPDATE
+// upsert sqlc doesn't generate cleanly), same reasoning as SaveRun.
 func (r *ScheduleRepository) ApproveAssignments(ctx context.Context, assignments []domain.LockedAssignment) (int, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -260,8 +210,6 @@ func (r *ScheduleRepository) ApproveAssignments(ctx context.Context, assignments
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
-	// Pipelined as one batch (single round trip) instead of one Exec per
-	// assignment, same reasoning as SaveRun's execBatch.
 	batch := &pgx.Batch{}
 	for _, a := range assignments {
 		var shift *string
@@ -303,33 +251,27 @@ func (r *ScheduleRepository) ApproveAssignments(ctx context.Context, assignments
 
 // ApprovedAssignments returns the currently-approved cells in [from, to].
 func (r *ScheduleRepository) ApprovedAssignments(ctx context.Context, from, to domain.Date) ([]domain.LockedAssignment, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT employee_id, assignment_date, gate, shift, off
-		FROM approved_assignments
-		WHERE assignment_date BETWEEN $1 AND $2
-		ORDER BY employee_id, assignment_date
-	`, from.Time, to.Time)
+	rows, err := r.queries.ListApprovedAssignments(ctx, sqlcgen.ListApprovedAssignmentsParams{
+		AssignmentDate:   from.Time,
+		AssignmentDate_2: to.Time,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("query approved_assignments: %w", err)
 	}
-	defer rows.Close()
 
-	var result []domain.LockedAssignment
-	for rows.Next() {
-		var a domain.LockedAssignment
-		var gate, shift *string
-		if err := rows.Scan(&a.EmployeeID, &a.Date.Time, &gate, &shift, &a.Off); err != nil {
-			return nil, fmt.Errorf("scan approved_assignment: %w", err)
+	result := make([]domain.LockedAssignment, 0, len(rows))
+	for _, row := range rows {
+		a := domain.LockedAssignment{
+			EmployeeID: row.EmployeeID,
+			Date:       domain.Date{Time: row.AssignmentDate},
+			Gate:       row.Gate,
+			Off:        row.Off,
 		}
-		a.Gate = gate
-		if shift != nil {
-			st := domain.ShiftType(*shift)
+		if row.Shift != nil {
+			st := domain.ShiftType(*row.Shift)
 			a.Shift = &st
 		}
 		result = append(result, a)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate approved_assignments: %w", err)
 	}
 	return result, nil
 }
@@ -337,12 +279,12 @@ func (r *ScheduleRepository) ApprovedAssignments(ctx context.Context, from, to d
 // UnapproveAssignments deletes approved cells in [from, to] so a future
 // solve is free to reassign them, and returns how many rows were removed.
 func (r *ScheduleRepository) UnapproveAssignments(ctx context.Context, from, to domain.Date) (int, error) {
-	tag, err := r.pool.Exec(ctx, `
-		DELETE FROM approved_assignments
-		WHERE assignment_date BETWEEN $1 AND $2
-	`, from.Time, to.Time)
+	rowsAffected, err := r.queries.DeleteApprovedAssignments(ctx, sqlcgen.DeleteApprovedAssignmentsParams{
+		AssignmentDate:   from.Time,
+		AssignmentDate_2: to.Time,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("delete approved_assignments: %w", err)
 	}
-	return int(tag.RowsAffected()), nil
+	return int(rowsAffected), nil
 }
