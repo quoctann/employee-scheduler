@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 func TestApproveService_Approve_DelegatesToRepository(t *testing.T) {

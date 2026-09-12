@@ -22,15 +22,15 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 
-	"github.com/tantq/employee-scheduler-backend/internal/adapter/httpapi"
-	"github.com/tantq/employee-scheduler-backend/internal/adapter/postgres"
-	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
-	"github.com/tantq/employee-scheduler-backend/internal/adapter/xlsxexport"
-	"github.com/tantq/employee-scheduler-backend/internal/config"
-	"github.com/tantq/employee-scheduler-backend/internal/core/service"
-	"github.com/tantq/employee-scheduler-backend/internal/platform/logging"
-	"github.com/tantq/employee-scheduler-backend/internal/platform/migrate"
-	"github.com/tantq/employee-scheduler-backend/internal/platform/tracing"
+	"github.com/quoctann/employee-scheduler-backend/internal/adapter/httpapi"
+	"github.com/quoctann/employee-scheduler-backend/internal/adapter/postgres"
+	"github.com/quoctann/employee-scheduler-backend/internal/adapter/solverclient"
+	"github.com/quoctann/employee-scheduler-backend/internal/adapter/xlsxexport"
+	"github.com/quoctann/employee-scheduler-backend/internal/config"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/service"
+	"github.com/quoctann/employee-scheduler-backend/internal/platform/logging"
+	"github.com/quoctann/employee-scheduler-backend/internal/platform/migrate"
+	"github.com/quoctann/employee-scheduler-backend/internal/platform/tracing"
 )
 
 func main() {
@@ -137,15 +137,15 @@ func runServer() {
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := shutdownTracing(shutdownCtx); err != nil {
-			logger.Error("shutdown tracing", zap.Error(err))
+		if shutdownErr := shutdownTracing(shutdownCtx); shutdownErr != nil {
+			logger.Error("shutdown tracing", zap.Error(shutdownErr))
 		}
 	}()
 
 	if cfg.DBAutoMigrate {
 		logger.Info("running database migrations")
-		if err := migrate.Up(cfg.DatabaseURL); err != nil {
-			logger.Fatal("run migrations", zap.Error(err))
+		if migrateErr := migrate.Up(cfg.DatabaseURL); migrateErr != nil {
+			logger.Fatal("run migrations", zap.Error(migrateErr))
 		}
 	}
 

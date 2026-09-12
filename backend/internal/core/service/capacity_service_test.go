@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 func TestCapacityService_Check_DefaultsEmployeeCountFromRepository(t *testing.T) {

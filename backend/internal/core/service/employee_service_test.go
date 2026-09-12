@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/port"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/port"
 )
 
 func TestEmployeeService_Roster_ReturnsEmployeesAndAvailability(t *testing.T) {

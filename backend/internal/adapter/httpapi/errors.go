@@ -7,8 +7,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
-	"github.com/tantq/employee-scheduler-backend/internal/adapter/solverclient"
-	"github.com/tantq/employee-scheduler-backend/internal/core/service"
+	"github.com/quoctann/employee-scheduler-backend/internal/adapter/solverclient"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/service"
 )
 
 // statusForError maps a service-layer error to an HTTP status: our own input

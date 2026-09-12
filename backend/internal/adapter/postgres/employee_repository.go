@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	sqlcgen "github.com/tantq/employee-scheduler-backend/internal/adapter/postgres/sqlc"
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/port"
+	sqlcgen "github.com/quoctann/employee-scheduler-backend/internal/adapter/postgres/sqlc"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/port"
 )
 
 type EmployeeRepository struct {

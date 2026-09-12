@@ -13,7 +13,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/tantq/employee-scheduler-backend/migrations"
+	"github.com/quoctann/employee-scheduler-backend/migrations"
 )
 
 // open builds a *migrate.Migrate wired to the embedded migration files and

@@ -1,6 +1,6 @@
 package solverclient
 
-import "github.com/tantq/employee-scheduler-backend/internal/core/domain"
+import "github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 
 // These wire-format structs carry the exact JSON field names solver-service
 // expects on its request bodies. They stay local to this adapter so the core

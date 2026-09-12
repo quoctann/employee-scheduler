@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 // bindJSON decodes the request body as JSON regardless of its Content-Type

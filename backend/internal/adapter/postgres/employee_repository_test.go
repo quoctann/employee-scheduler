@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/port"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/port"
 )
 
 // currentDateForTest mirrors CURRENT_DATE as seen by the migration that

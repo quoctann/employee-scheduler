@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 // ScheduleRepository is the outbound port owning everything solver-service

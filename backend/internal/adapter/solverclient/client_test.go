@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/port"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/port"
 )
 
 func mustDate(t *testing.T, s string) domain.Date {

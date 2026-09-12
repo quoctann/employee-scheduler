@@ -8,8 +8,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/service"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/service"
 )
 
 // maxRequestBodySize bounds request bodies as a basic resource-exhaustion

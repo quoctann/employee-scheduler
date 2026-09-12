@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 var (

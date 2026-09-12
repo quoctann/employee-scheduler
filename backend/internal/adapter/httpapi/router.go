@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.uber.org/zap"
 
-	"github.com/tantq/employee-scheduler-backend/internal/platform/logging"
+	"github.com/quoctann/employee-scheduler-backend/internal/platform/logging"
 )
 
 // NewRouter wires the minimal HTTP contract onto s and layers CORS, panic

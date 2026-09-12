@@ -3,8 +3,8 @@ package httpapi_test
 import (
 	"context"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/port"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/port"
 )
 
 // Minimal hand-written port fakes so these tests can build real

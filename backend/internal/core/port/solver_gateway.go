@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 // SolveRequest is what SolverGateway.Solve sends to solver-service's POST /solve.

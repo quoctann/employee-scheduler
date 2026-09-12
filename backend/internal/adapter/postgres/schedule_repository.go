@@ -8,9 +8,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	sqlcgen "github.com/tantq/employee-scheduler-backend/internal/adapter/postgres/sqlc"
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
-	"github.com/tantq/employee-scheduler-backend/internal/core/port"
+	sqlcgen "github.com/quoctann/employee-scheduler-backend/internal/adapter/postgres/sqlc"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/port"
 )
 
 // approvedBy is a placeholder identity for the demo scope — there is no

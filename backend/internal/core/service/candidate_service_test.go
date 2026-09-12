@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tantq/employee-scheduler-backend/internal/core/domain"
+	"github.com/quoctann/employee-scheduler-backend/internal/core/domain"
 )
 
 func TestCandidateService_Suggest_UsesLatestRunWindowWhenAvailable(t *testing.T) {
